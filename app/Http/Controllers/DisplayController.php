@@ -157,17 +157,25 @@ class DisplayController extends Controller
             ->where('tahap', $tahap)
             ->whereNull("{$tahap}_panggil_at")
             ->when($rooms, fn ($q) => $q->whereIn('room_code', $rooms))
-            ->orderBy("{$tahap}_tunggu_at")
+            // Urut berdasarkan NOMOR SLOT, bukan waktu tunggu — supaya pasien
+            // booking tampil di posisi seharusnya (berselang dengan yang sudah
+            // check-in), bukan terlempar ke belakang.
+            ->orderBy('queue_no')
             ->orderByRaw('LENGTH(no_antrian), no_antrian')
             ->limit(9) // 6 baris daftar + 3 kartu "upcoming" di layar.
-            ->get(['no_antrian', 'pasien_nama', 'room_code', 'counter']);
+            // is_booking ikut diambil: pasien yang belum check-in tetap
+            // ditampilkan (samar) supaya urutan terlihat utuh sejak awal.
+            ->get(['no_antrian', 'pasien_nama', 'room_code', 'counter', 'is_booking']);
 
         $next = $waiting->first();
 
-        // TOTAL yang menunggu (tanpa limit) — layar hanya menampilkan 5 kartu
-        // pertama, angka ini memberi tahu sisanya ("+45 lagi") tanpa 50 kotak.
+        // TOTAL yang menunggu (tanpa limit) — layar hanya menampilkan beberapa
+        // kartu pertama, angka ini memberi tahu sisanya tanpa puluhan kotak.
+        // Hanya pasien NYATA yang dihitung: yang masih booking belum tentu
+        // datang, jadi tidak boleh menggelembungkan angka antrian.
         $waitingTotal = Antrian::today()
             ->where('tahap', $tahap)
+            ->nyata()
             ->whereNull("{$tahap}_panggil_at")
             ->when($rooms, fn ($q) => $q->whereIn('room_code', $rooms))
             ->count();
@@ -206,10 +214,13 @@ class DisplayController extends Controller
                 'no'   => $next->no_antrian,
                 'nama' => $next->pasien_nama,
             ] : null,
-            // 5 kartu = antrian berikutnya menunggu (nomor + ruang/counter tujuan).
+            // Kartu antrian berikutnya. `booking` = pasien belum check-in →
+            // ditampilkan SAMAR agar urutan terlihat utuh & tidak ada yang
+            // terkesan menyelip saat pasien itu registrasi.
             'queue' => $waiting->map(fn ($r) => [
-                'no'     => $r->no_antrian,
-                'tujuan' => $tujuan($r),
+                'no'      => $r->no_antrian,
+                'tujuan'  => $tujuan($r),
+                'booking' => (bool) $r->is_booking,
             ])->values(),
             'waiting_total' => $waitingTotal,
         ]);

@@ -1,5 +1,49 @@
 # Catatan Lanjutan
 
+## ⚠ 7 Agustus — WAJIB DIKERJAKAN
+
+### 1. Aktifkan Task Scheduler (auto-sync belum jalan penuh)
+Jadwal `antrian:sync` tiap menit SUDAH ditulis di `routes/console.php` dan
+sudah diuji jalan, TAPI **belum didaftarkan di Windows Task Scheduler**,
+jadi belum berjalan sendiri.
+
+Cara mendaftarkan (sekali saja):
+1. Buka **Task Scheduler** → Create Task
+2. Name: `Antrian Sync`
+3. Tab **Triggers** → New → Daily, Repeat task every **1 minute**,
+   duration **Indefinitely**
+4. Tab **Actions** → New → Program: `C:\xampp\htdocs\antrian\scheduler.bat`
+5. Centang "Run whether user is logged on or not"
+
+Tanpa ini, sync hanya jalan saat ada yang MEMBUKA halaman antrian.
+
+### 2. Nomor tiket beda (FD001 vs FD023) — BUKAN BUG
+Penyebab: data registrasi dibuat di **produksi**, sedangkan nomor slot
+dicari di tabel `appointments` **lokal** (yang tidak punya data itu).
+API lalu jatuh ke `QueueNo` MEDINFRAS (1, 2) alih-alih slot (23, 24).
+
+Sudah dibuktikan logikanya benar:
+```
+FD001 + slot lokal 23 -> FD023   (yang diharapkan)
+FD001 + QueueNo 1     -> FD001   (kondisi saat data lokal kosong)
+```
+**Tidak ada kode yang perlu diubah.** Untuk uji coba, buat appointment +
+registrasi lewat aplikasi appointment LOKAL, jangan dari produksi.
+Di produksi otomatis benar karena datanya satu database.
+
+### 3. Logout sendiri — BELUM SELESAI
+Ditemukan error di log:
+`Table 'appointment_pasien_cihos.antrian_access' doesn't exist`
+
+Artinya ada kode yang menanyakan tabel `antrian_access` ke database
+**appointment**, padahal tabel itu ada di `antrian_cihos`. Saat gagal,
+sesi tidak terverifikasi → terlempar ke login.
+
+Config sudah benar (`DB_DATABASE=antrian_cihos`), jadi ada sesuatu yang
+mengganti koneksi saat runtime. **Belum ketemu di mana.**
+Langkah lanjut: cari `setDefaultConnection`/`config(['database...'])` atau
+model tanpa `$connection` yang dipakai lintas aplikasi.
+
 ## ▶ LANJUTAN BERIKUTNYA (6 Agt, belum selesai)
 
 ### Cara menyebut NOMOR RUANG — belum diputuskan

@@ -117,7 +117,8 @@
       "Bash(node vdetail.js)",
       "Bash(curl -s --max-time 30 \"http://localhost/antrian/display/speech?no=B012&dest=2&area=kasir\")",
       "Bash(php -l app/Services/AntrianSync.php)",
-      "Bash(sed 's/\\\\x1b\\\\[[0-9;]*m//g')"
+      "Bash(sed 's/\\\\x1b\\\\[[0-9;]*m//g')",
+      "Bash(grep -oE \"app[\\\\\\\\/][A-Za-z/\\\\\\\\]+\\\\.php\\\\\\(?[0-9]*\\\\\\)?|Controller[A-Za-z]*|routes[\\\\\\\\/][a-z]+\\\\.php\")"
     ],
     "additionalDirectories": [
       "C:\\xampp\\htdocs\\display",

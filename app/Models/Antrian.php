@@ -106,6 +106,18 @@ class Antrian extends Model
         return $query->where('tahap', $tahap);
     }
 
+    /**
+     * Pasien NYATA saja — yang sudah check-in/registrasi.
+     *
+     * Baris `is_booking` hanya ditampilkan SAMAR di layar supaya urutan
+     * antrian terlihat utuh sejak awal; ia belum boleh dipanggil, dihitung
+     * sebagai sisa antrian, atau diproses ke tahap berikutnya.
+     */
+    public function scopeNyata($query)
+    {
+        return $query->where('is_booking', false);
+    }
+
     /** Sedang menunggu di tahap ini (belum panggil / belum selesai). */
     public function scopeMenunggu($query, string $tahap)
     {

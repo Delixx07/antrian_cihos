@@ -143,6 +143,14 @@
         .qc.lead .no{color:var(--brand);}
         .qc.empty{opacity:.45;}
         .qc.empty .no,.qc.empty .to b{color:#a9b6cf;}
+        /* BOOKING: pasien sudah punya jadwal tapi BELUM check-in. Ditampilkan
+           samar & bergaris putus-putus supaya urutan antrian terlihat utuh
+           sejak awal — jadi saat ia check-in, ia tidak terkesan menyelip. */
+        .qc.booking{opacity:.5;border-style:dashed;background:rgba(255,255,255,.45);}
+        .qc.booking .no{color:#6b7d9e;font-weight:700;}
+        .qc.booking .to b{color:#7c8aa6;}
+        .qc .bk{font-size:1.15vh;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+            color:#8d9ab4;margin-top:.2vh;}
 
         /* ---------- MARQUEE (glass gelap) ---------- */
         .mq{background:rgba(6,34,80,.86);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
@@ -596,7 +604,11 @@
                 // --- Kartu antrean menunggu ---
                 var cards=document.querySelectorAll('#qrows .qc');
                 for(var i=0;i<cards.length;i++){var cd=cards[i],r=q[i];
-                    cd.classList.toggle('lead', i===0 && !!r);
+                    var bk = !!(r && r.booking);
+                    // "lead" (giliran berikutnya) hanya untuk pasien yang
+                    // sudah check-in — booking belum boleh dipanggil.
+                    cd.classList.toggle('lead', i===0 && !!r && !bk);
+                    cd.classList.toggle('booking', bk);
                     if(r){cd.classList.remove('empty');
                         cd.querySelector('.no').textContent=esc(r.no);
                         cd.querySelector('.to b').textContent=r.tujuan?esc(r.tujuan):'—';}

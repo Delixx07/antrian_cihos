@@ -5,36 +5,58 @@ namespace App\Http\Controllers;
 use App\Models\Antrian;
 use App\Models\Doctor;
 use App\Services\AntrianSync;
-use App\Services\AppointmentApiClient;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
 /**
  * Antrian klinik (per dokter). Dokter (role Klinik) MEMANGGIL pasiennya dari
  * tabel `antrian` lokal (tahap klinik), lalu menyelesaikan → dorong ke KASIR
- * (administrasi). Admin/SPV melihat gambaran umum (read-only via API appointment).
+ * (administrasi). Admin/SPV melihat gambaran umum (read-only dari tabel lokal).
  */
 class QueueController extends Controller
 {
     private const TAHAP = Antrian::TAHAP_KLINIK;
 
-    public function index(Request $request, AppointmentApiClient $api, AntrianSync $sync)
+    public function index(Request $request, AntrianSync $sync)
     {
         $role    = (string) session('role', '');
         $isAdmin = in_array($role, ['administrator', 'spv'], true);
         $date    = $request->query('date') ?: now()->toDateString();
 
-        // Auto-sync ringan (throttle maks 1x/45 dtk) — tarik pasien baru dari
-        // appointment saat halaman dibuka. Karena antrian & appointment 1 server,
-        // panggilan API lokal & cepat. Tak butuh scheduler/cron.
+        // Auto-sync ringan saat halaman dibuka — membaca tabel appointment di
+        // MySQL lokal (bukan HTTP), jadi murah & tidak mungkin timeout.
         $sync->pullThrottled($date);
 
         // ── Admin/SPV: gambaran umum read-only (boleh pilih dokter) ──
         if ($isAdmin) {
             $paramedicId = (int) $request->query('paramedic_id', 0);
             $doctor  = $paramedicId ? Doctor::find($paramedicId) : null;
-            $result  = $paramedicId ? $api->doctorRegistrations($paramedicId, $date)
-                                    : ['ok' => true, 'rows' => [], 'total' => 0, 'message' => null];
+
+            // Dibaca dari tabel antrian LOKAL (hasil sync), bukan HTTP ke
+            // aplikasi appointment. Pemanggilan API di sini pernah membuat
+            // halaman menggantung sampai timeout (cURL error 28) sehingga
+            // petugas terlempar ke halaman login.
+            $rows = $paramedicId
+                ? Antrian::whereDate('tanggal', $date)
+                    ->where('paramedic_id', $paramedicId)
+                    ->orderBy('queue_no')
+                    ->get()
+                    ->map(fn ($a) => [
+                        'ticket'         => $a->no_antrian,
+                        'queue'          => $a->queue_no,
+                        'patient'        => $a->pasien_nama,
+                        'medicalNo'      => $a->pasien_nomrn,
+                        'doctor'         => $a->poli_dokter_nama,
+                        'unit'           => $a->poli_nama,
+                        'room'           => $a->room_code,
+                        'appointmentNo'  => $a->appointment_no,
+                        'registrationNo' => $a->registration_no,
+                        'timeRegis'      => optional($a->klinik_tunggu_at)->format('H:i') ?: '—',
+                        'status'         => $a->tahap,
+                    ])->all()
+                : [];
+
+            $result  = ['ok' => true, 'rows' => $rows, 'total' => count($rows), 'message' => null];
             $doctors = Doctor::orderBy('paramedic_name')->get(['paramedic_id', 'paramedic_name', 'paramedic_code']);
 
             return view('queue.admin', [
@@ -66,7 +88,7 @@ class QueueController extends Controller
         $ownToday = fn () => Antrian::today()->where('paramedic_id', $paramedicId);
 
         // Menunggu: di tahap klinik, belum dipanggil. Urut ASCENDING nomor antrian.
-        $menunggu  = $ownToday()->where('tahap', self::TAHAP)
+        $menunggu  = $ownToday()->where('tahap', self::TAHAP)->nyata()
             ->whereNull('klinik_panggil_at')
             ->orderByRaw('LENGTH(no_antrian), no_antrian')->get();
 
@@ -97,9 +119,9 @@ class QueueController extends Controller
     /**
      * TARIK ULANG pasien dari appointment SEKARANG (tombol manual).
      *
-     * Sync otomatis berjalan saat halaman dibuka, tapi di-throttle supaya tak
-     * membebani API. Bila pasien baru saja didaftarkan dan belum muncul,
-     * tombol ini memaksa tarik data tanpa menunggu throttle.
+     * Sync otomatis berjalan saat halaman dibuka, tapi di-throttle beberapa
+     * detik. Bila pasien baru saja registrasi dan belum muncul, tombol ini
+     * memaksa tarik data tanpa menunggu throttle.
      */
     public function syncNow(Request $request, AntrianSync $sync)
     {
@@ -126,7 +148,7 @@ class QueueController extends Controller
     {
         $paramedicId = (int) session('paramedic_id', 0);
 
-        $next = Antrian::today()->where('tahap', self::TAHAP)
+        $next = Antrian::today()->where('tahap', self::TAHAP)->nyata()
             ->where('paramedic_id', $paramedicId)
             ->whereNull('klinik_panggil_at')
             ->orderByRaw('LENGTH(no_antrian), no_antrian')->first();

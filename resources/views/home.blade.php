@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Antrian — Ciputra Hospital</title>
+    <title>Antrian Ciputra Hospital</title>
     <style>
         body{font-family:'Segoe UI',system-ui,sans-serif;background:#f1f5f9;margin:0;padding:2rem;color:#0f172a;}
         .bar{display:flex;align-items:center;justify-content:space-between;max-width:900px;margin:0 auto 1.5rem;}
