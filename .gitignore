@@ -22,3 +22,7 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Cache audio TTS — dibuat ulang otomatis, tak perlu ikut repo/deploy
+/public/tts/*
+!/public/tts/.gitignore
