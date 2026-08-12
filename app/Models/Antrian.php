@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Antrian pasien lokal. Mengalir: KLINIK → KASIR → FARMASI → SELESAI.
@@ -146,14 +147,24 @@ class Antrian extends Model
 
     // ---- Aksi alur ----
 
-    /** Panggil pasien di tahap (set panggil_at + naikkan counter). */
+    /**
+     * Panggil pasien di tahap (set panggil_at + naikkan counter).
+     *
+     * panggil_count dinaikkan lewat ekspresi SQL, BUKAN `$this->panggil_count + 1`:
+     * nilainya dipakai layar & TTS sebagai `seq` (pemicu animasi + kunci dedup
+     * pengumuman). Bila dua petugas menekan Panggil hampir bersamaan, pola
+     * baca-lalu-tulis membuat keduanya menulis angka yang sama → seq tidak
+     * berubah → layar tak berkedip dan suara TIDAK diumumkan ulang.
+     */
     public function panggil(string $tahap, ?string $counter = null): void
     {
         $this->forceFill([
             "{$tahap}_panggil_at" => now(),
             'counter'             => $counter ?? $this->counter,
-            'panggil_count'       => $this->panggil_count + 1,
+            'panggil_count'       => DB::raw('panggil_count + 1'),
         ])->save();
+
+        $this->refresh();   // ambil nilai panggil_count hasil increment
     }
 
     /** Ulangi panggilan (hanya naikkan counter, tak ubah tahap). */
@@ -161,8 +172,10 @@ class Antrian extends Model
     {
         $this->forceFill([
             "{$tahap}_panggil_at" => now(),
-            'panggil_count'       => $this->panggil_count + 1,
+            'panggil_count'       => DB::raw('panggil_count + 1'),
         ])->save();
+
+        $this->refresh();
     }
 
     /**

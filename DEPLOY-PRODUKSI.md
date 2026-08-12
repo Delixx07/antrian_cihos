@@ -5,18 +5,53 @@ aplikasi error atau tidak aman.
 
 ---
 
-## 1. WAJIB — Berkas & folder yang disalin
+## 0. Yang perlu dipahami dulu — database mana yang dibuat, mana yang tidak
+
+Aplikasi ini memakai **4 database**. Hanya **satu** yang kita buat sendiri:
+
+| Database | Isi | Di server produksi |
+|---|---|---|
+| **`antrian_cihos`** | antrian, hak akses, banner, video, foto dokter, sesi, cache | **BELUM ADA — kita yang membuat (§2)** |
+| `cihos_master` | dokter, jadwal praktik, klinik, prefix ruang | Sudah ada, milik sistem lain — **jangan disentuh** |
+| `appointment_pasien_cihos` | sumber data antrian (registrasi pasien) | Sudah ada, milik sistem lain — **jangan disentuh** |
+| `dbuser` | direktori user RS, verifikasi password login | Sudah ada, milik sistem lain — **jangan disentuh** |
+
+> **Tidak perlu backup/dump dari server lama.** Tiga database terakhir sudah
+> tersedia di server produksi dan aplikasi ini hanya **membaca** darinya.
+> `antrian_cihos` dibuat dari nol memakai berkas `setup-database.sql`
+> yang sudah disiapkan di repo ini (§2) — bukan hasil salinan.
+
+---
+
+## 1. WAJIB — Ambil kode aplikasi
+
+### Cara A — `git clone` (dianjurkan)
+
+```powershell
+cd C:\xampp\htdocs
+git clone <url-repo> antrian
+cd antrian
+composer install --no-dev --optimize-autoloader
+```
+
+Semua berkas data ikut ter-clone, termasuk `public/banners/`,
+`public/videos/`, `public/doctor-photos/`, `public/bel.mp3`, dan
+`storage/deploy/setup-database.sql` — **tidak perlu menyalin apa pun manual**.
+
+`.env` sengaja tidak ada di repo; dibuat di §3.
+
+### Cara B — salin folder manual
 
 Salin seluruh folder proyek, **KECUALI** ini (jangan ikut):
 
 | Jangan disalin | Alasan |
 |---|---|
-| `.env` | konfigurasi lokal — dibuat baru di produksi (lihat §2) |
+| `.env` | konfigurasi lokal — dibuat baru di produksi (lihat §3) |
 | `.env.bak-*` | cadangan lama, berisi kredensial |
 | `storage/logs/*.log` | log lokal, bisa besar |
 | `storage/app/*_backup_*.json` | cadangan uji coba |
 | `public/tts/*.mp3` | cache audio, dibuat ulang otomatis |
-| `node_modules/`, `.git/` | tidak diperlukan saat runtime |
+| `node_modules/` | tidak diperlukan saat runtime |
 
 **HARUS ikut** (mudah terlewat, isinya data asli):
 - `public/banners/` — gambar promosi
@@ -24,6 +59,7 @@ Salin seluruh folder proyek, **KECUALI** ini (jangan ikut):
 - `public/doctor-photos/` — foto dokter
 - `public/bel.mp3` — bel pengumuman
 - `public/cihoslogo_biruijo.png`, `login_bg.png`
+- `storage/deploy/setup-database.sql` — dipakai di §2
 
 ```
 composer install --no-dev --optimize-autoloader
@@ -31,9 +67,72 @@ composer install --no-dev --optimize-autoloader
 
 ---
 
-## 2. WAJIB — Buat `.env` produksi
+## 2. WAJIB — Buat database `antrian_cihos`
 
-Salin `.env.example`, lalu isi. Yang **HARUS** berbeda dari lokal:
+Berkas `storage/deploy/setup-database.sql` membuat database ini dari **NOL**:
+17 tabel lengkap + data awal (hak akses user, banner, video, foto dokter),
+dan tabel `migrations` sudah terisi sehingga Laravel tahu semua migrasi
+telah dijalankan.
+
+```powershell
+cd C:\xampp\mysql\bin
+.\mysql.exe -u root -p < storage\deploy\setup-database.sql
+```
+
+> **PowerShell tidak mendukung `<`.** Kalau muncul error
+> *"The '<' operator is reserved for future use"*, pakai salah satu ini:
+>
+> ```powershell
+> # cara A — mysql membaca berkasnya sendiri (paling cepat)
+> .\mysql.exe -u root -p -e "source C:/xampp/htdocs/antrian/storage/deploy/setup-database.sql"
+>
+> # cara B — pipa; -Raw WAJIB, tanpa itu perintah multi-baris rusak
+> Get-Content C:\xampp\htdocs\antrian\storage\deploy\setup-database.sql -Raw | .\mysql.exe -u root -p
+> ```
+>
+> Pada cara A gunakan **garis miring biasa** (`/`) — `source` adalah perintah
+> internal klien mysql, dan `\` di situ dianggap karakter escape.
+
+Verifikasi (harus muncul 17 tabel):
+```powershell
+.\mysql.exe -u root -p -e "USE antrian_cihos; SHOW TABLES;"
+```
+
+> ⚠️ **Hanya untuk database kosong.** Berkas ini memuat perintah `DROP`.
+> Bila `antrian_cihos` sudah ada dan berisi data operasional, **jangan
+> dijalankan** — isinya akan terhapus.
+
+<details>
+<summary>Alternatif: bikin tabel lewat migration saja (tanpa data awal)</summary>
+
+Kalau memang ingin database benar-benar kosong tanpa data awal:
+
+```powershell
+.\mysql.exe -u root -p -e "CREATE DATABASE IF NOT EXISTS antrian_cihos CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+cd C:\xampp\htdocs\antrian
+php artisan migrate --force
+```
+
+Strukturnya sama persis, tapi **tanpa** hak akses user, banner, video, dan
+foto dokter — semuanya harus diisi ulang manual lewat menu admin.
+Untuk deploy normal, pakai `setup-database.sql` di atas.
+</details>
+
+---
+
+## 3. WAJIB — Buat `.env` produksi
+
+> Berkas `.env*` (selain `.env.example`) **sengaja tidak ikut git** — isinya
+> kredensial. Jadi setelah `git clone`, `.env` dan `.env.produksi` TIDAK ada
+> di server; keduanya dibuat manual di sini. Kalau punya `.env.produksi`
+> hasil siapan, salin lewat flashdisk/RDP — **jangan** di-commit ke repo.
+
+```powershell
+cd C:\xampp\htdocs\antrian
+copy .env.example .env
+```
+
+Lalu isi. Yang **HARUS** berbeda dari lokal:
 
 ```env
 APP_ENV=production
@@ -46,6 +145,8 @@ APP_URL=http://172.20.0.39/antrian
 ASSET_URL=/antrian
 
 # --- Database (sesuaikan kredensial produksi) ---
+# Hanya antrian_cihos yang dibuat sendiri (§2); tiga sisanya sudah ada
+# di server dan hanya DIBACA aplikasi ini.
 DB_DATABASE=antrian_cihos
 DB_USERNAME=<jangan root>
 DB_PASSWORD=<password kuat>
@@ -68,18 +169,37 @@ TTS_EDGE_PITCH="-12Hz"
 TTS_SOUND_MODE=local
 ```
 
-> **Jangan pakai user `root`** untuk database di produksi. Buat user khusus
-> yang hanya boleh mengakses 4 database di atas.
+> **Jangan pakai user `root`** untuk database di produksi. Buat user khusus:
+> hak **penuh** atas `antrian_cihos`, tetapi cukup **`SELECT` saja** untuk
+> `cihos_master`, `appointment_pasien_cihos`, dan `dbuser` — aplikasi ini
+> hanya membaca ketiganya, dan hak tulis di situ berisiko merusak data
+> sistem lain.
+>
+> ```sql
+> CREATE USER 'antrian'@'localhost' IDENTIFIED BY '<password kuat>';
+> GRANT ALL PRIVILEGES ON `antrian_cihos`.*             TO 'antrian'@'localhost';
+> GRANT SELECT         ON `cihos_master`.*              TO 'antrian'@'localhost';
+> GRANT SELECT         ON `appointment_pasien_cihos`.*  TO 'antrian'@'localhost';
+> GRANT SELECT         ON `dbuser`.*                    TO 'antrian'@'localhost';
+> FLUSH PRIVILEGES;
+> ```
 
 Lalu:
 ```
 php artisan key:generate
 php artisan migrate --force
+php artisan config:clear
 ```
+
+> `migrate --force` di sini hanya **verifikasi** — `setup-database.sql`
+> sudah mengisi tabel `migrations`, jadi keluarannya semestinya
+> **"Nothing to migrate"**. Kalau justru ada migrasi yang jalan, berarti
+> repo di server lebih baru daripada berkas SQL-nya; itu normal dan
+> memang perlu dijalankan.
 
 ---
 
-## 3. WAJIB — Konfigurasi Apache
+## 4. WAJIB — Konfigurasi Apache
 
 Tambahkan di `httpd.conf` (arahkan ke folder `public`, BUKAN root proyek —
 kalau salah, `.env` bisa diunduh siapa saja):
@@ -106,7 +226,7 @@ Kalau ingin `172.20.0.39/display/klinik`, salin `htdocs/.htaccess` dari server i
 
 ---
 
-## 4. WAJIB — Suara pengumuman (TTS)
+## 5. WAJIB — Suara pengumuman (TTS)
 
 Aplikasi memakai **Edge TTS** (voice `id-ID-GadisNeural`). Server produksi
 perlu:
@@ -130,7 +250,7 @@ Harus `true`. Kalau `false`, suara tidak akan keluar.
 
 ---
 
-## 5. WAJIB — Hak tulis folder
+## 6. WAJIB — Hak tulis folder
 
 Pastikan Apache bisa menulis ke:
 ```
@@ -144,7 +264,7 @@ public/doctor-photos/
 
 ---
 
-## 6. Impor user
+## 7. Impor user
 
 ```
 php artisan antrian:import-users --dry-run   # lihat dulu
@@ -155,7 +275,7 @@ departemen. Password TIDAK disalin — login tetap diverifikasi ke `dbuser`.
 
 ---
 
-## 7. Layar TV
+## 8. Layar TV
 
 Salin `buka-layar.bat` & `buka-speaker.bat` ke tiap PC layar, lalu ubah:
 ```bat
@@ -170,7 +290,7 @@ shortcut-nya di situ.
 
 ---
 
-## 8. JANGAN dilakukan
+## 9. JANGAN dilakukan
 
 - **Jangan** jalankan `php artisan config:cache` selama masih sering mengubah
   `.env`. Config basi pernah membuat koneksi `mysql` menunjuk ke database
@@ -181,7 +301,7 @@ shortcut-nya di situ.
 
 ---
 
-## 9. Uji setelah deploy
+## 10. Uji setelah deploy
 
 ```
 # Aplikasi hidup

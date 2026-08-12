@@ -146,7 +146,7 @@ class DisplayController extends Controller
             ->when($rooms, fn ($q) => $q->whereIn('room_code', $rooms))
             ->orderByDesc("{$tahap}_panggil_at")
             ->limit(6)
-            ->get(['no_antrian', 'pasien_nama', 'counter', 'poli_nama', 'room_code', "{$tahap}_panggil_at as panggil_at", 'panggil_count']);
+            ->get(['no_antrian', 'counter', 'poli_nama', 'room_code', "{$tahap}_panggil_at as panggil_at", 'panggil_count']);
 
         $first = $calls->first();
 
@@ -165,7 +165,7 @@ class DisplayController extends Controller
             ->limit(9) // 6 baris daftar + 3 kartu "upcoming" di layar.
             // is_booking ikut diambil: pasien yang belum check-in tetap
             // ditampilkan (samar) supaya urutan terlihat utuh sejak awal.
-            ->get(['no_antrian', 'pasien_nama', 'room_code', 'counter', 'is_booking']);
+            ->get(['no_antrian', 'room_code', 'counter', 'is_booking']);
 
         $next = $waiting->first();
 
@@ -200,10 +200,13 @@ class DisplayController extends Controller
             return trim($v) !== '' ? trim($v) : '—';
         };
 
+        // CATATAN PRIVASI: endpoint ini PUBLIK (dipakai layar TV, tanpa login),
+        // jadi `pasien_nama` sengaja TIDAK ikut dikirim — layar hanya
+        // menampilkan nomor antrian & tujuan. Nama pasien hanya boleh muncul
+        // di halaman terproteksi (mis. konsol dokter di queue/klinik).
         return response()->json([
             'current' => $first ? [
                 'no'      => $first->no_antrian,
-                'nama'    => $first->pasien_nama,
                 // klinik → RUANG dokter; kasir/farmasi → counter.
                 'tujuan'  => $tujuan($first),
                 'counter' => $first->counter,
@@ -211,8 +214,7 @@ class DisplayController extends Controller
                 'at'      => optional($first->panggil_at)->timestamp,
             ] : null,
             'next' => $next ? [
-                'no'   => $next->no_antrian,
-                'nama' => $next->pasien_nama,
+                'no' => $next->no_antrian,
             ] : null,
             // Kartu antrian berikutnya. `booking` = pasien belum check-in →
             // ditampilkan SAMAR agar urutan terlihat utuh & tidak ada yang

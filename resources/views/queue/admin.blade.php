@@ -90,7 +90,9 @@
     @endphp
     @push('scripts')
     <script>
-        var DOCTORS = {!! json_encode($docJson, JSON_UNESCAPED_UNICODE) !!};
+        {{-- @json meng-escape <, >, & sehingga nama dokter dari master tidak
+             bisa memutus tag <script> (mis. nama berisi "</script>"). --}}
+        var DOCTORS = @json($docJson);
 
         (function(){
             var combo=document.getElementById('docCombo'), trigger=document.getElementById('docTrigger'),
