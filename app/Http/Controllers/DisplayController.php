@@ -129,6 +129,24 @@ class DisplayController extends Controller
             ->map(fn ($r) => trim($r))->filter()->values()->all();
     }
 
+    /**
+     * Query dasar Antrian hari ini untuk sebuah AREA layar. Farmasi TIDAK
+     * bisa difilter lewat kolom `tahap` — pasien ber-resep tetap di tahap
+     * KASIR sepanjang alur (lihat Antrian::selesaiFarmasi()), hanya kolom
+     * farmasi_panggil_at/farmasi_selesai_at yang berubah. Filter lewat
+     * status_resep di sini (racik + non_racik digabung, sama seperti
+     * maksud user: satu layar farmasi menampilkan keduanya).
+     */
+    private function areaQuery(string $area, string $tahap)
+    {
+        if ($area === 'farmasi') {
+            return Antrian::today()
+                ->whereIn('status_resep', [Antrian::RESEP_RACIK, Antrian::RESEP_NON_RACIK]);
+        }
+
+        return Antrian::today()->where('tahap', $tahap);
+    }
+
     /** JSON panggilan terkini area (untuk polling layar). */
     public function json(Request $request, string $area)
     {
@@ -139,8 +157,7 @@ class DisplayController extends Controller
         // Nomor yang sedang dipanggil (belum selesai) di tahap ini hari ini,
         // urut terbaru dulu (paling atas = panggilan aktif). Bila ?room= diberikan,
         // batasi ke ruangan itu (bisa gabungan beberapa ruang).
-        $calls = Antrian::today()
-            ->where('tahap', $tahap)
+        $calls = $this->areaQuery($area, $tahap)
             ->whereNotNull("{$tahap}_panggil_at")
             ->whereNull("{$tahap}_selesai_at")
             ->when($rooms, fn ($q) => $q->whereIn('room_code', $rooms))
@@ -153,8 +170,7 @@ class DisplayController extends Controller
         // ANTRIAN BERIKUTNYA yang MENUNGGU (belum dipanggil), urut paling lama dulu.
         // Sesuai sistem lama: kartu utama = yang sedang dipanggil; 4 kotak = beberapa
         // nomor berikutnya yang menunggu giliran (BUKAN riwayat panggilan).
-        $waiting = Antrian::today()
-            ->where('tahap', $tahap)
+        $waiting = $this->areaQuery($area, $tahap)
             ->whereNull("{$tahap}_panggil_at")
             ->when($rooms, fn ($q) => $q->whereIn('room_code', $rooms))
             // Urut berdasarkan NOMOR SLOT, bukan waktu tunggu — supaya pasien
@@ -173,8 +189,7 @@ class DisplayController extends Controller
         // kartu pertama, angka ini memberi tahu sisanya tanpa puluhan kotak.
         // Hanya pasien NYATA yang dihitung: yang masih booking belum tentu
         // datang, jadi tidak boleh menggelembungkan angka antrian.
-        $waitingTotal = Antrian::today()
-            ->where('tahap', $tahap)
+        $waitingTotal = $this->areaQuery($area, $tahap)
             ->nyata()
             ->whereNull("{$tahap}_panggil_at")
             ->when($rooms, fn ($q) => $q->whereIn('room_code', $rooms))
@@ -322,16 +337,20 @@ class DisplayController extends Controller
 
         $rows = (clone $base)->whereNull('klinik_panggil_at')
             ->orderByRaw('LENGTH(no_antrian), no_antrian')->limit(30)
-            ->get(['no_antrian', 'klinik_tunggu_at']);
+            ->get(['no_antrian', 'klinik_tunggu_at', 'is_booking']);
 
+        // Baris `is_booking` (belum check-in) IKUT ditampilkan — supaya nomornya
+        // sudah kelihatan dari awal & tak "meloncat" posisi begitu pasien check-in
+        // — tapi ditandai `pending` supaya layar bisa merender lebih redup.
         $s2start = $s2['start'] ?? null;
         $sesi1 = []; $sesi2 = [];
         foreach ($rows as $r) {
             $jam = $r->klinik_tunggu_at ? $r->klinik_tunggu_at->format('H:i') : null;
+            $item = ['ticket' => $r->no_antrian, 'pending' => (bool) $r->is_booking];
             if ($s2start && $jam !== null && $jam >= $s2start) {
-                $sesi2[] = $r->no_antrian;
+                $sesi2[] = $item;
             } else {
-                $sesi1[] = $r->no_antrian;
+                $sesi1[] = $item;
             }
         }
         return ['sedang' => $sedang ?: null, 'seq' => $seq, 'sesi1' => $sesi1, 'sesi2' => $sesi2];
