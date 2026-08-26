@@ -25,7 +25,8 @@ class UserController extends Controller
                     ->orWhere('paramedic_name', 'like', "%{$q}%");
             }))
             ->orderBy('name')
-            ->get();
+            ->paginate(25)
+            ->withQueryString();
 
         return view('users.index', [
             'users' => $users,

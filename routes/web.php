@@ -9,14 +9,17 @@ use App\Http\Controllers\DoctorController;
 use App\Http\Controllers\FarmasiController;
 use App\Http\Controllers\KasirController;
 use App\Http\Controllers\QueueController;
+use App\Http\Controllers\RegistrasiController;
 use App\Http\Controllers\RoomController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\SpeechController;
+use App\Http\Controllers\SpvController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VideoController;
+use App\Http\Controllers\ZoneController;
 use Illuminate\Support\Facades\Route;
 
-// --- Layar tunggu / kiosk (PUBLIK, tanpa login — untuk TV ruang tunggu) ---
+// --- Layar tunggu / kiosk (PUBLIK, tanpa login - untuk TV ruang tunggu) ---
 // MENU pemilihan display (halaman awal). mis. /display
 Route::get('/display', [DisplayController::class, 'menu'])->name('display.menu');
 
@@ -27,7 +30,7 @@ Route::get('/display/client/{room}', [DisplayController::class, 'client'])
 Route::get('/display/client/{room}/json', [DisplayController::class, 'clientJson'])
     ->where('room', '[0-9,\-]+')->name('display.client.json');
 
-// AUDIO pengumuman (Bahasa Indonesia) — dirender di server sehingga semua
+// AUDIO pengumuman (Bahasa Indonesia) - dirender di server sehingga semua
 // perangkat berbunyi sama tanpa perlu voice terpasang.
 // HARUS didaftarkan sebelum /display/{area} agar tidak tertangkap wildcard.
 Route::get('/display/speech', [SpeechController::class, 'show'])->name('display.speech');
@@ -39,18 +42,18 @@ Route::get('/display/speech/enqueue', [SpeechController::class, 'enqueue'])->nam
 Route::get('/display/speech/next', [SpeechController::class, 'nextAnnouncement'])->name('display.speech.next');
 Route::get('/display/speech/done', [SpeechController::class, 'doneAnnouncement'])->name('display.speech.done');
 
-// Halaman SPEAKER PUSAT — buka di satu PC yang tersambung sound system RS.
+// Halaman SPEAKER PUSAT - buka di satu PC yang tersambung sound system RS.
 Route::view('/display/speaker', 'display.speaker')->name('display.speaker');
 
 // MAIN DISPLAY per area: klinik | kasir | farmasi. mis. /display/farmasi
 Route::get('/display/{area}', [DisplayController::class, 'show'])
-    ->whereIn('area', ['klinik', 'kasir', 'farmasi'])->name('display.show');
+    ->whereIn('area', ['klinik', 'kasir', 'farmasi', 'registrasi'])->name('display.show');
 Route::get('/display/{area}/json', [DisplayController::class, 'json'])
-    ->whereIn('area', ['klinik', 'kasir', 'farmasi'])->name('display.json');
+    ->whereIn('area', ['klinik', 'kasir', 'farmasi', 'registrasi'])->name('display.json');
 
 // --- Autentikasi ---
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
-Route::post('/login', [AuthController::class, 'login'])->name('login.attempt');
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login')->name('login.attempt');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 // --- Halaman terlindungi (butuh login) ---
@@ -72,7 +75,7 @@ Route::middleware('auth.antrian')->group(function () {
     // --- Antrian (registrasi hari ini per dokter, via API appointment) ---
     Route::get('/antrian', [QueueController::class, 'index'])->name('queue.index');
     // Tarik ulang pasien dari appointment SEKARANG (tombol manual di halaman
-    // antrian) — dipakai bila sync otomatis terlewat/belum menarik pasien baru.
+    // antrian) - dipakai bila sync otomatis terlewat/belum menarik pasien baru.
     Route::post('/antrian/sync', [QueueController::class, 'syncNow'])->name('queue.sync');
     // Konsol panggil dokter (role klinik).
     Route::post('/antrian/panggil', [QueueController::class, 'panggil'])->name('queue.panggil');
@@ -106,6 +109,25 @@ Route::middleware('auth.antrian')->group(function () {
         Route::put('/kasir/{antrian}/selesai', [KasirController::class, 'selesai'])->name('kasir.selesai');
     });
 
+    // --- Monitor SPV: antrian klinik lintas klinik (read-only). Ganti Klinik/
+    // Ganti Dokter berupa MODAL di /spv sendiri, jadi cuma 3 route (bukan
+    // halaman GET terpisah utk tiap modal). ---
+    Route::middleware('role:spv')->group(function () {
+        Route::get('/spv', [SpvController::class, 'beranda'])->name('spv.beranda');
+        Route::post('/spv/klinik', [SpvController::class, 'setKlinik'])->name('spv.set-klinik');
+        Route::post('/spv/dokter', [SpvController::class, 'setDokter'])->name('spv.set-dokter');
+    });
+
+    // --- Counter Registrasi (role registrasi) - panggil tiket RG dari kiosk ---
+    Route::middleware('role:registrasi')->group(function () {
+        Route::get('/registrasi/pilih-counter', [RegistrasiController::class, 'pilihCounter'])->name('registrasi.pilih-counter');
+        Route::post('/registrasi/pilih-counter', [RegistrasiController::class, 'setCounter'])->name('registrasi.set-counter');
+        Route::get('/registrasi', [RegistrasiController::class, 'beranda'])->name('registrasi.beranda');
+        Route::put('/registrasi/{registrasi}/panggil', [RegistrasiController::class, 'panggil'])->name('registrasi.panggil');
+        Route::put('/registrasi/{registrasi}/ulang', [RegistrasiController::class, 'ulang'])->name('registrasi.ulang');
+        Route::put('/registrasi/{registrasi}/selesai', [RegistrasiController::class, 'selesai'])->name('registrasi.selesai');
+    });
+
     // --- Manajemen User (hanya administrator) ---
     Route::middleware('role:administrator')->group(function () {
         Route::get('/user', [UserController::class, 'index'])->name('users.index');
@@ -115,8 +137,15 @@ Route::middleware('auth.antrian')->group(function () {
         Route::put('/user/{user}', [UserController::class, 'update'])->name('users.update');
         Route::delete('/user/{user}', [UserController::class, 'destroy'])->name('users.destroy');
 
-        // Media layar tunggu — halaman GABUNGAN (tab Video & Banner).
+        // Media layar tunggu - halaman GABUNGAN (tab Video & Banner).
         Route::get('/media', [App\Http\Controllers\MediaController::class, 'index'])->name('media.index');
+        Route::put('/media/running-text', [App\Http\Controllers\MediaController::class, 'updateRunningText'])->name('media.running-text.update');
+
+        // Zona Klinik (nama zona + pasangan ruang per Client Display).
+        Route::get('/zones', [ZoneController::class, 'index'])->name('zones.index');
+        Route::post('/zones', [ZoneController::class, 'store'])->name('zones.store');
+        Route::put('/zones/{zone}', [ZoneController::class, 'update'])->name('zones.update');
+        Route::delete('/zones/{zone}', [ZoneController::class, 'destroy'])->name('zones.destroy');
 
         // Aksi Banner (dipakai dari halaman media). index lama → redirect ke media.
         Route::get('/banner', fn () => redirect()->route('media.index'))->name('banners.index');

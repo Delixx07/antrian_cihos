@@ -27,7 +27,7 @@ REM  Isi dengan IP PC yang menjalankan XAMPP (server antrian),
 REM  dilihat dari sisi TV. Cek dengan membuka alamat ini di
 REM  browser TV: bila layar antrian muncul, berarti sudah benar.
 REM ============================================================
-set "SERVER=172.19.4.232"
+set "SERVER=172.20.0.39"
 
 REM Bila .bat ini dijalankan DI PC server sendiri, boleh pakai:
 REM set "SERVER=localhost"

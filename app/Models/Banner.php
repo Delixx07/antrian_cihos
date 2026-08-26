@@ -55,7 +55,7 @@ class Banner extends Model
     /**
      * Batasi ke banner yang boleh tampil di sebuah klinik.
      *
-     * Tanpa ?clinic= (layar umum) HANYA banner "Semua Klinik" yang tampil —
+     * Tanpa ?clinic= (layar umum) HANYA banner "Semua Klinik" yang tampil -
      * banner bertarget (mis. ANDROLOGY) tidak boleh bocor ke layar lain.
      * Dengan ?clinic=X: banner "Semua Klinik" + banner bertarget X.
      */

@@ -13,6 +13,16 @@ use Illuminate\Validation\Rule;
  */
 class FarmasiController extends Controller
 {
+    /**
+     * Counter ini masih punya resep yang dipanggil TAPI belum Selesai/Lanjut?
+     * Dipakai supaya tak bisa memanggil resep baru sebelum yang sekarang
+     * benar-benar selesai - kalau tidak, "Sedang Dilayani" numpuk.
+     */
+    private function hasActiveFarmasi(string $counter): bool
+    {
+        return Antrian::hasActiveCall('farmasi', 'counter', $counter);
+    }
+
     /** Halaman "Silahkan Pilih Counter Pemanggil". */
     public function pilihCounter()
     {
@@ -49,7 +59,7 @@ class FarmasiController extends Controller
         $counter = session('farmasi_counter');
 
         // Farmasi HANYA melihat pasien ber-resep sesuai jenis counter ini
-        // (racik / non_racik) yang BELUM clear — berdasar status resep, bukan
+        // (racik / non_racik) yang BELUM clear - berdasar status resep, bukan
         // tahap (pasien tetap di tahap kasir sepanjang alur).
         $q = fn () => Antrian::today()->farmasiQueue($jenis);
 
@@ -94,6 +104,9 @@ class FarmasiController extends Controller
         if (! $counter) {
             return redirect()->route('farmasi.pilih-counter');
         }
+        if ($this->hasActiveFarmasi($counter)) {
+            return back()->with('error', 'Selesaikan dulu resep yang sedang dilayani sebelum memanggil yang baru.');
+        }
 
         $next = Antrian::today()->farmasiQueue($jenis)
             ->whereNull('farmasi_panggil_at')
@@ -124,6 +137,9 @@ class FarmasiController extends Controller
         if ($antrian->farmasi_jenis !== $jenis || ! $antrian->adaResep() || $antrian->resep_clear) {
             return back()->with('error', $antrian->no_antrian.' bukan antrian farmasi '.$jenis.' ini.');
         }
+        if ($this->hasActiveFarmasi($counter)) {
+            return back()->with('error', 'Selesaikan dulu resep yang sedang dilayani sebelum memanggil yang baru.');
+        }
 
         $antrian->panggil(Antrian::TAHAP_FARMASI, $counter);
 
@@ -135,6 +151,13 @@ class FarmasiController extends Controller
     /** Ulangi panggilan nomor yang sedang aktif. */
     public function ulang(Antrian $antrian)
     {
+        // "Sedang Dilayani" ditampilkan LINTAS counter, tapi Recall cuma boleh
+        // dari counter yang memanggil resep itu - kalau tidak, counter mana pun
+        // bisa mengulang panggilan resep counter lain.
+        if ($antrian->counter !== session('farmasi_counter')) {
+            return back()->with('error', 'Resep ini sedang ditangani counter lain.');
+        }
+
         $antrian->ulang(Antrian::TAHAP_FARMASI);
 
         return back()
@@ -143,7 +166,7 @@ class FarmasiController extends Controller
     }
 
     /**
-     * Panggil ULANG resep dari RIWAYAT (sudah selesai) — buka kembali ke farmasi
+     * Panggil ULANG resep dari RIWAYAT (sudah selesai) - buka kembali ke farmasi
      * bila pasien perlu balik. Reset status clear & waktu selesai, panggil lagi.
      */
     public function panggilUlangRiwayat(Antrian $antrian)
@@ -156,9 +179,13 @@ class FarmasiController extends Controller
         if ($antrian->farmasi_jenis !== $jenis) {
             return back()->with('error', $antrian->no_antrian.' bukan resep '.$jenis.' ini.');
         }
+        if ($this->hasActiveFarmasi($counter)) {
+            return back()->with('error', 'Selesaikan dulu resep yang sedang dilayani sebelum memanggil yang baru.');
+        }
 
         // Buka kembali: batal clear, hapus jejak selesai, panggil lagi.
         $antrian->forceFill([
+            'tahap'              => Antrian::TAHAP_FARMASI,
             'resep_clear'        => false,
             'farmasi_selesai_at' => null,
         ])->save();
@@ -180,8 +207,14 @@ class FarmasiController extends Controller
     /** Selesai = resep selesai (Resep CLEAR) → pasien balik ke KASIR utk bayar obat. */
     public function selesai(Antrian $antrian)
     {
+        // Sama seperti ulang() - jangan biarkan counter lain menyelesaikan
+        // resep yang sedang ditangani counter lain.
+        if ($antrian->counter !== session('farmasi_counter')) {
+            return back()->with('error', 'Resep ini sedang ditangani counter lain.');
+        }
+
         $antrian->selesaiFarmasi();
 
-        return back()->with('ok', 'Resep '.$antrian->no_antrian.' selesai — pasien kembali ke Kasir untuk pembayaran.');
+        return back()->with('ok', 'Resep '.$antrian->no_antrian.' selesai - pasien kembali ke Kasir untuk pembayaran.');
     }
 }

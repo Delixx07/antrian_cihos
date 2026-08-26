@@ -85,7 +85,7 @@ class OdbcSqlServer
     /**
      * Jalankan SELECT dan kembalikan semua baris sebagai array asosiatif.
      *
-     * Placeholder pakai tanda tanya (?) — parameter di-bind lewat odbc_execute
+     * Placeholder pakai tanda tanya (?) - parameter di-bind lewat odbc_execute
      * (prepared statement) supaya aman dari SQL injection.
      *
      * @param  string  $sql
@@ -120,7 +120,7 @@ class OdbcSqlServer
      * Sama seperti select(), tapi hasilnya di-cache selama $ttl detik.
      *
      * Untuk data SQL Server yang jarang berubah (daftar unit, dokter, jadwal),
-     * ini menghindari query berat ke server RS setiap kali halaman dibuka —
+     * ini menghindari query berat ke server RS setiap kali halaman dibuka -
      * penyebab utama "buffering lama". Kunci cache diturunkan dari SQL+bindings.
      *
      * @param  string  $sql

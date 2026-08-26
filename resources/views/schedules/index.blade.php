@@ -56,16 +56,16 @@
                             };
                         @endphp
                         <tr>
-                            <td class="day">{{ $days[$r->day_number] ?? $r->day_in_string ?? '—' }}</td>
+                            <td class="day">{{ $days[$r->day_number] ?? $r->day_in_string ?? '-' }}</td>
                             <td><span class="badge">{{ $r->service_unit_code }}</span></td>
                             <td style="color:var(--ink);">{{ $r->service_unit_name }}</td>
-                            <td>{{ $r->paramedic_code ?: '—' }}</td>
+                            <td>{{ $r->paramedic_code ?: '-' }}</td>
                             <td style="font-weight:600;color:var(--ink);">{{ $names[$r->paramedic_id] ?? ('#'.$r->paramedic_id) }}</td>
                             @for ($i = 1; $i <= 5; $i++)
                                 @php $w = $win($r->{"start_time{$i}"}, $r->{"end_time{$i}"}); @endphp
-                                <td class="sesi {{ $w ? '' : 'none' }}">{{ $w ?: '—' }}</td>
+                                <td class="sesi {{ $w ? '' : 'none' }}">{{ $w ?: '-' }}</td>
                             @endfor
-                            <td>{{ $r->room_name ?: $r->room_code ?: '—' }}</td>
+                            <td>{{ $r->room_name ?: $r->room_code ?: '-' }}</td>
                         </tr>
                     @empty
                         <tr><td colspan="11" class="empty">Tidak ada jadwal ditemukan.</td></tr>

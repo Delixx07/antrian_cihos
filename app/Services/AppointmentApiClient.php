@@ -24,7 +24,7 @@ class AppointmentApiClient
     }
 
     /**
-     * Semua registrasi hari ini (lintas dokter) — sumber untuk mengisi antrian
+     * Semua registrasi hari ini (lintas dokter) - sumber untuk mengisi antrian
      * lokal (farmasi/kasir melayani semua pasien, bukan per dokter).
      *
      * @return array{ok:bool, rows:array, total:int, date:?string, error:?string, message:?string}
@@ -49,7 +49,7 @@ class AppointmentApiClient
      *
      * Server appointment kadang menjawab gagal/timeout sesaat (terpantau ±1
      * dari 3 permintaan). Karena itu permintaan DIULANG beberapa kali dengan
-     * jeda pendek sebelum menyerah — jauh lebih murah daripada menampilkan
+     * jeda pendek sebelum menyerah - jauh lebih murah daripada menampilkan
      * "data tidak tersedia" ke petugas padahal datanya ada.
      */
     private function fetch(?int $paramedicId, ?string $date): array

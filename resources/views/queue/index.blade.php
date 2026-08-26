@@ -40,7 +40,7 @@
         <div class="filters">
             <form method="get" style="display:flex;gap:.7rem;flex-wrap:wrap;align-items:center;" id="filterForm">
                 <select name="paramedic_id" onchange="document.getElementById('filterForm').submit()">
-                    <option value="">— Pilih Dokter —</option>
+                    <option value="">- Pilih Dokter -</option>
                     @foreach ($doctors as $d)
                         <option value="{{ $d->paramedic_id }}" {{ (int)$paramedicId === (int)$d->paramedic_id ? 'selected' : '' }}>
                             {{ $d->paramedic_name }} @if($d->paramedic_code) ({{ $d->paramedic_code }}) @endif

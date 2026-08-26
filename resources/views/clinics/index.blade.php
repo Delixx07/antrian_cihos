@@ -80,14 +80,14 @@
                             <td><span class="badge">{{ $c->service_unit_code }}</span></td>
                             <td style="font-weight:600;color:var(--ink);">{{ $c->service_unit_name }}</td>
                             <td class="rc {{ $in['zone'] ? '' : 'none' }}">
-                                {{ $in['zone'] ?: '—' }}
+                                {{ $in['zone'] ?: '-' }}
                                 @if ($in['zone'])
                                     <span class="src src-{{ $in['source'] === 'MEDINFRAS' ? 'med' : 'loc' }}">{{ $in['source'] }}</span>
                                 @endif
                             </td>
                             @for ($i = 0; $i < 5; $i++)
                                 @php $rc = $in['rooms'][$i] ?? null; @endphp
-                                <td class="rc {{ $rc ? '' : 'none' }}">{{ $rc ?: '—' }}</td>
+                                <td class="rc {{ $rc ? '' : 'none' }}">{{ $rc ?: '-' }}</td>
                             @endfor
                             @php
                                 $rowData = [

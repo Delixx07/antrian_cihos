@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Pilih Ruang — CIHOS Queue</title>
+    <title>Pilih Ruang - CIHOS Queue</title>
     <link rel="icon" href="{{ asset('cihoslogo.png') }}" type="image/png">
     <style>
         :root{--navy:#0a2a66;--navy2:#123a8a;--ink:#2b3350;--muted:#98a2b3;--line:#eceef3;}

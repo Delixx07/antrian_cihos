@@ -45,11 +45,17 @@ return [
         ],
 
         'mysql' => [
-            'driver' => 'mysql',
+            // Testing (phpunit.xml: APP_ENV=testing) mengalihkan koneksi ini
+            // ke SQLite in-memory - beberapa model (Antrian, AntrianAccess,
+            // Banner, Video, dll) hardcode `protected $connection = 'mysql'`,
+            // jadi harus koneksi INI juga yang dialihkan (bukan cuma alias
+            // 'default'), supaya test tak pernah menyentuh MySQL asli.
+            // Tak berdampak sama sekali di luar testing (driver tetap mysql).
+            'driver' => env('APP_ENV') === 'testing' ? 'sqlite' : 'mysql',
             'url' => env('DB_URL'),
             'host' => env('DB_HOST', '127.0.0.1'),
             'port' => env('DB_PORT', '3306'),
-            'database' => env('DB_DATABASE', 'laravel'),
+            'database' => env('APP_ENV') === 'testing' ? env('DB_DATABASE', ':memory:') : env('DB_DATABASE', 'laravel'),
             'username' => env('DB_USERNAME', 'root'),
             'password' => env('DB_PASSWORD', ''),
             'unix_socket' => env('DB_SOCKET', ''),
@@ -68,10 +74,14 @@ return [
         // membaca data mirror MEDINFRAS (dokter, klinik, jadwal, prefix ruangan)
         // tanpa sync ulang. JANGAN menulis ke koneksi ini.
         'appointment' => [
-            'driver' => 'mysql',
+            // Sama seperti 'mysql' di atas: dialihkan ke SQLite in-memory saat
+            // testing (APP_ENV=testing), supaya App\Models\KioskRegistration
+            // (satu-satunya model yang MENULIS ke koneksi ini) bisa dites tanpa
+            // pernah menyentuh DB appointment yang asli.
+            'driver' => env('APP_ENV') === 'testing' ? 'sqlite' : 'mysql',
             'host' => env('APPT_DB_HOST', '127.0.0.1'),
             'port' => env('APPT_DB_PORT', '3306'),
-            'database' => env('APPT_DB_DATABASE', 'appointment_pasien_cihos'),
+            'database' => env('APP_ENV') === 'testing' ? ':memory:' : env('APPT_DB_DATABASE', 'appointment_pasien_cihos'),
             'username' => env('APPT_DB_USERNAME', 'root'),
             'password' => env('APPT_DB_PASSWORD', ''),
             'charset' => 'utf8mb4',
@@ -98,7 +108,7 @@ return [
             'engine' => null,
         ],
 
-        // Direktori user RS (dbuser.user_detail) — sumber login (username + SHA1).
+        // Direktori user RS (dbuser.user_detail) - sumber login (username + SHA1).
         // READ-ONLY. Sama seperti yang dipakai aplikasi Appointment.
         'dbuser' => [
             'driver' => 'mysql',

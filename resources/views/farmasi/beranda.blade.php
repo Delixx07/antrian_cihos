@@ -44,7 +44,7 @@
             <div class="kq-panel">
                 <div class="kq-panel-h"><h3>Ringkasan</h3></div>
                 <div class="kq-panel-b" style="padding-top:.4rem;padding-bottom:.4rem;">
-                    <div class="kq-inforow"><span>Nomor Berikutnya</span><span class="chip blue">{{ $berikutnya->no_antrian ?? '—' }}</span></div>
+                    <div class="kq-inforow"><span>Nomor Berikutnya</span><span class="chip blue">{{ $berikutnya->no_antrian ?? '-' }}</span></div>
                     <div class="kq-inforow"><span>Sisa Antrian</span><span class="chip amber">{{ $sisa }}</span></div>
                 </div>
             </div>
@@ -65,7 +65,7 @@
                             <span class="tk">{{ $a->no_antrian }}</span>
                             <div class="who">
                                 <div class="nm">{{ $a->pasien_nama }}</div>
-                                <div class="rm">{{ $a->poli_dokter_nama ?: '—' }}</div>
+                                <div class="rm">{{ $a->poli_dokter_nama ?: '-' }}</div>
                             </div>
                             <span class="sr resep">{{ $a->farmasi_jenis==='racik'?'Racik':'Non-Racik' }}</span>
                             <span class="waitchip">{{ $a->menitTunggu() }}m</span>
@@ -90,13 +90,17 @@
                             <span class="tk">{{ $a->no_antrian }}</span>
                             <div class="who">
                                 <div class="nm">{{ $a->pasien_nama }}</div>
-                                <div class="rm">{{ $a->poli_dokter_nama ?: '—' }}</div>
+                                <div class="rm">{{ $a->poli_dokter_nama ?: '-' }}</div>
                             </div>
                             <span class="waitchip">{{ $a->counter }}</span>
-                            <form method="post" action="{{ route('farmasi.ulang', $a) }}">@csrf @method('PUT')
-                                <button type="submit" class="kq-btn recall">⟲ Recall</button></form>
-                            <form method="post" action="{{ route('farmasi.selesai', $a) }}">@csrf @method('PUT')
-                                <button type="submit" class="kq-btn done">✔ Selesai</button></form>
+                            @if ($a->counter === $counter)
+                                <form method="post" action="{{ route('farmasi.ulang', $a) }}">@csrf @method('PUT')
+                                    <button type="submit" class="kq-btn recall">⟲ Recall</button></form>
+                                <form method="post" action="{{ route('farmasi.selesai', $a) }}">@csrf @method('PUT')
+                                    <button type="submit" class="kq-btn done">✔ Selesai</button></form>
+                            @else
+                                <span class="kq-otherctr" title="Sedang ditangani counter lain">Counter lain</span>
+                            @endif
                         </div>
                     @empty
                         <div class="kq-empty">Belum ada yang dilayani.</div>
@@ -117,7 +121,7 @@
                             <span class="tk">{{ $a->no_antrian }}</span>
                             <div class="who">
                                 <div class="nm">{{ $a->pasien_nama }}</div>
-                                <div class="rm">{{ $a->poli_dokter_nama ?: '—' }}</div>
+                                <div class="rm">{{ $a->poli_dokter_nama ?: '-' }}</div>
                             </div>
                             <span class="sr clear">Selesai</span>
                             <form method="post" action="{{ route('farmasi.panggil-ulang', $a) }}"

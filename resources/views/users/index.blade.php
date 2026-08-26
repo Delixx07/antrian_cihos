@@ -18,6 +18,13 @@
     .act.edit{background:#eff4ff;color:var(--brand);} .act.edit:hover{background:var(--brand);color:#fff;}
     .act.del{background:#fdecec;color:#dc2626;} .act.del:hover{background:#dc2626;color:#fff;}
     .empty{text-align:center;padding:3rem;color:var(--muted);}
+    .pg{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;padding:1rem 0;}
+    .pg-info{font-size:.8rem;color:var(--muted);}
+    .pg-btns{display:flex;gap:.5rem;}
+    .pg-btn{border:1px solid var(--line);background:#fff;color:var(--brand);border-radius:8px;padding:.45rem .9rem;
+        font-size:.82rem;font-weight:600;text-decoration:none;cursor:pointer;transition:.15s;}
+    .pg-btn:hover{border-color:var(--brand);background:#eff4ff;}
+    .pg-btn.off{color:var(--muted);cursor:default;pointer-events:none;opacity:.5;}
     .ok{background:#eafaf0;border:1px solid #b7ebc9;color:#16794a;padding:.7rem 1rem;border-radius:9px;margin-bottom:1rem;font-size:.88rem;}
     .err-flash{background:#fdecec;border:1px solid #f5b5b5;color:#b42318;padding:.7rem 1rem;border-radius:9px;margin-bottom:1rem;font-size:.88rem;}
     .btn-primary{display:inline-flex;align-items:center;gap:.4rem;background:var(--brand);color:#fff;border:none;padding:.6rem 1rem;border-radius:9px;font-size:.88rem;font-weight:600;cursor:pointer;text-decoration:none;}
@@ -71,7 +78,7 @@
                 <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
                 <input class="input" type="text" name="q" value="{{ $q }}" placeholder="Cari username / nama…" onchange="this.form.submit()">
             </form>
-            <span class="count-badge">{{ count($users) }} user</span>
+            <span class="count-badge">{{ $users->total() }} user</span>
             <button type="button" class="btn-primary" style="margin-left:auto;" onclick="openAdd()">
                 <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
                 Tambah User
@@ -93,10 +100,10 @@
                 <tbody>
                     @forelse ($users as $u)
                         <tr>
-                            <td style="font-weight:600;color:var(--ink);">{{ $u->name ?: '—' }}</td>
+                            <td style="font-weight:600;color:var(--ink);">{{ $u->name ?: '-' }}</td>
                             <td><span class="badge">{{ $u->username }}</span></td>
                             <td><span class="badge role">{{ $roles[$u->role] ?? $u->role }}</span></td>
-                            <td style="color:#556;">{{ $u->paramedic_name ?: ($u->counter ?: '—') }}</td>
+                            <td style="color:#556;">{{ $u->paramedic_name ?: ($u->counter ?: '-') }}</td>
                             <td>
                                 @if ($u->is_blocked)
                                     <span class="pill off"><i></i> Diblokir</span>
@@ -125,6 +132,24 @@
                 </tbody>
             </table>
         </div>
+
+        @if ($users->hasPages())
+            <div class="pg">
+                <span class="pg-info">Halaman {{ $users->currentPage() }} dari {{ $users->lastPage() }} - menampilkan {{ $users->firstItem() }}–{{ $users->lastItem() }} dari {{ $users->total() }} user</span>
+                <div class="pg-btns">
+                    @if ($users->previousPageUrl())
+                        <a href="{{ $users->previousPageUrl() }}" class="pg-btn">‹ Sebelumnya</a>
+                    @else
+                        <span class="pg-btn off">‹ Sebelumnya</span>
+                    @endif
+                    @if ($users->nextPageUrl())
+                        <a href="{{ $users->nextPageUrl() }}" class="pg-btn">Berikutnya ›</a>
+                    @else
+                        <span class="pg-btn off">Berikutnya ›</span>
+                    @endif
+                </div>
+            </div>
+        @endif
     </div>
 
     {{-- Modal Tambah/Edit --}}
@@ -138,7 +163,7 @@
                 @csrf
                 <input type="hidden" name="_method" id="mMethod" value="POST">
                 <div class="modal-body">
-                    {{-- Cari user dari direktori RS (dbuser) — hanya saat tambah --}}
+                    {{-- Cari user dari direktori RS (dbuser) - hanya saat tambah --}}
                     <div class="fg" id="fgDirectory">
                         <label>Cari User (Direktori RS)</label>
                         <input type="text" id="dirSearch" autocomplete="off" placeholder="Ketik nama / username / NIK…" oninput="searchDir(this.value)">
@@ -170,7 +195,7 @@
                         </select>
                     </div>
 
-                    {{-- Dokter — hanya untuk role Klinik --}}
+                    {{-- Dokter - hanya untuk role Klinik --}}
                     <div class="fg" id="fgDoctor" style="display:none;">
                         <label>Dokter</label>
                         <input type="text" id="docSearch" autocomplete="off" placeholder="Cari nama dokter…" oninput="searchDoc(this.value)">
@@ -179,7 +204,7 @@
                         <div class="hint" id="docPicked" style="display:none;"></div>
                     </div>
 
-                    {{-- Counter — untuk Farmasi/Kasir/Loket/Radiologi (opsional) --}}
+                    {{-- Counter - untuk Farmasi/Kasir/Loket/Radiologi (opsional) --}}
                     <div class="fg" id="fgCounter" style="display:none;">
                         <label>Counter / Loket (opsional)</label>
                         <input type="text" name="counter" id="mCounter" placeholder="mis. Counter 1, Farmasi Racik">

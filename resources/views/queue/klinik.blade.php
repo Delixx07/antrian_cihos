@@ -33,8 +33,8 @@
                         <div class="kq-acts">
                             <form method="post" action="{{ route('queue.ulang', $current) }}">@csrf @method('PUT')
                                 <button class="b-recall" type="submit">⟲ Recall</button></form>
-                            <form onsubmit="return false;">
-                                <button class="b-done" type="button" onclick="openSelesai({{ $current->id }})">✔ Selesai</button></form>
+                            <form method="post" action="{{ route('queue.selesai', $current) }}">@csrf @method('PUT')
+                                <button class="b-done" type="submit">✔ Selesai</button></form>
                         </div>
                     @else
                         <div class="kq-idle">
@@ -49,7 +49,7 @@
             <div class="kq-panel">
                 <div class="kq-panel-h"><h3>Ringkasan</h3></div>
                 <div class="kq-panel-b" style="padding-top:.4rem;padding-bottom:.4rem;">
-                    <div class="kq-inforow"><span>Nomor Berikutnya</span><span class="chip blue">{{ $berikutnya->no_antrian ?? '—' }}</span></div>
+                    <div class="kq-inforow"><span>Nomor Berikutnya</span><span class="chip blue">{{ $berikutnya->no_antrian ?? '-' }}</span></div>
                     <div class="kq-inforow"><span>Sisa Antrian</span><span class="chip amber">{{ $sisa }}</span></div>
                 </div>
             </div>
@@ -69,14 +69,18 @@
                     <span class="kq-live" style="margin-left:.6rem;"><span class="dot"></span> Live</span></div>
                 <div class="kq-list">
                     @forelse ($menunggu as $a)
-                        <div class="kq-row">
+                        <div class="kq-row {{ $a->is_booking ? 'locked' : '' }}">
                             <span class="tk">{{ $a->no_antrian }}</span>
                             <div class="who">
                                 <div class="nm">{{ $a->pasien_nama }}</div>
-                                <div class="rm">No. RM {{ $a->pasien_nomrn ?: '—' }}</div>
+                                <div class="rm">No. RM {{ $a->pasien_nomrn ?: '-' }}</div>
                             </div>
-                            <form method="post" action="{{ route('queue.panggil-satu', $a) }}">@csrf @method('PUT')
-                                <button type="submit" class="kq-btn call">▶ Panggil</button></form>
+                            @if ($a->is_booking)
+                                <span class="kq-lock" title="Pasien sudah punya jadwal, tapi belum check-in di pendaftaran">⏳ Belum Check-in</span>
+                            @else
+                                <form method="post" action="{{ route('queue.panggil-satu', $a) }}">@csrf @method('PUT')
+                                    <button type="submit" class="kq-btn call">▶ Panggil</button></form>
+                            @endif
                         </div>
                     @empty
                         <div class="kq-empty">Tidak ada antrian menunggu.</div>
@@ -92,7 +96,7 @@
                             <span class="tk">{{ $a->no_antrian }}</span>
                             <div class="who">
                                 <div class="nm">{{ $a->pasien_nama }}</div>
-                                <div class="rm">No. RM {{ $a->pasien_nomrn ?: '—' }}</div>
+                                <div class="rm">No. RM {{ $a->pasien_nomrn ?: '-' }}</div>
                             </div>
                             <span class="sr {{ $a->statusWarna() }}">{{ $a->statusLabel() }}</span>
                             <form method="post" action="{{ route('queue.ulang', $a) }}"
@@ -110,69 +114,68 @@
         </div>
     </div>
 
-    {{-- ═══ Modal Selesai (generik) ═══ --}}
-    <div class="modal" id="selesaiModal" onclick="if(event.target===this)closeSelesai()">
-        <div class="modal-box">
-            <div class="modal-head">
-                <h3>Selesai Konsultasi</h3>
-                <p>Pilih status resep pasien. Setelah ini pasien diteruskan ke Administrasi (Kasir).</p>
-                <div class="pt"><span class="tk" id="mdTicket">—</span><span class="nm" id="mdName">—</span></div>
-            </div>
-            <div class="modal-body">
-                <form method="post" id="mdForm" action="#">@csrf @method('PUT')
-                    <input type="hidden" name="status_resep" id="mdStatus" value="">
-                    <button type="button" class="opt" onclick="submitSelesai('non_resep')">
-                        <span class="ic none">✓</span>
-                        <span class="tx"><b>Tanpa Resep</b><span>Pasien tidak mendapat resep obat</span></span>
-                        <span class="arr">→</span>
-                    </button>
-                    <button type="button" class="opt" onclick="submitSelesai('racik')">
-                        <span class="ic racik">💊</span>
-                        <span class="tx"><b>Resep Racik</b><span>Obat racikan — dilayani Farmasi Racik</span></span>
-                        <span class="arr">→</span>
-                    </button>
-                    <button type="button" class="opt" onclick="submitSelesai('non_racik')">
-                        <span class="ic nonracik">💊</span>
-                        <span class="tx"><b>Resep Non-Racik</b><span>Obat jadi — dilayani Farmasi Non-Racik</span></span>
-                        <span class="arr">→</span>
-                    </button>
-                </form>
-            </div>
-            <div class="modal-foot"><button type="button" class="btn-cancel" onclick="closeSelesai()">Batal</button></div>
-        </div>
-    </div>
     @endif {{-- /$paramedicId --}}
 </div>
 
 @push('scripts')
 <script>
-    var PATIENTS = {
-        @if($paramedicId)@if($current)"{{ $current->id }}": { ticket: @json($current->no_antrian), name: @json($current->pasien_nama) },@endif @endif
-    };
-    var SELESAI_URL = @json(url('/antrian').'/__ID__/selesai');
-    var _selId = null, _stopReload = false;
-
-    function openSelesai(id){
-        _selId = id;
-        var p = PATIENTS[id] || {ticket:'—', name:'—'};
-        document.getElementById('mdTicket').textContent = p.ticket;
-        document.getElementById('mdName').textContent = p.name;
-        document.getElementById('selesaiModal').classList.add('open');
-        _stopReload = true;
-    }
-    function closeSelesai(){ document.getElementById('selesaiModal').classList.remove('open'); _stopReload=false; }
-    function submitSelesai(status){
-        if(!_selId) return;
-        var f = document.getElementById('mdForm');
-        f.action = SELESAI_URL.replace('__ID__', _selId);
-        document.getElementById('mdStatus').value = status;
-        f.submit();
-    }
-    document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeSelesai(); });
     // Jangan reload saat pengumuman suara masih berbunyi (nanti terpotong).
     // Muat ulang tiap 8 dtk supaya pasien yang baru registrasi cepat muncul.
-    // Ditahan bila modal terbuka (_stopReload) atau pengumuman masih berbunyi.
-    setInterval(function(){ if(!_stopReload && !window.__sayBusy) location.reload(); }, 8000);
+    //
+    // Dulu ini langsung location.reload() tiap 8 dtk - begitu session sempat
+    // "nyangkut" sebentar (mis. baris session digilas GC lottery, atau DB
+    // sempat hiccup), reload berikutnya kena redirect middleware ke /login dan
+    // petugas merasa "logout sendiri" tanpa peringatan. Sekarang kita cek dulu
+    // lewat fetch(redirect:'manual') - reload NYATA hanya dijalankan kalau
+    // servernya benar masih menganggap kita login; sebuah redirect harus
+    // terkonfirmasi beberapa kali berturut-turut dulu sebelum kita percaya itu
+    // logout sungguhan, baru diarahkan ke /login.
+    var _authFails = 0;
+    var LOGIN_URL = @json(route('login'));
+
+    function showReconnecting(show){
+        var el = document.getElementById('kqReconnect');
+        if (show && !el) {
+            el = document.createElement('div');
+            el.id = 'kqReconnect';
+            el.className = 'kq-flash err';
+            el.textContent = '⚠ Koneksi ke server terputus sesaat, mencoba lagi…';
+            document.querySelector('.kq').prepend(el);
+        } else if (!show && el) {
+            el.remove();
+        }
+    }
+
+    function safeRefresh(){
+        if (window.__sayBusy) return;
+
+        fetch(window.location.href, { credentials: 'same-origin', redirect: 'manual', cache: 'no-store' })
+            .then(function (res) {
+                if (res.type === 'opaqueredirect') {
+                    // Server mengarahkan (redirect) - kemungkinan session habis.
+                    // Minta konfirmasi beberapa kali sebelum benar2 dianggap logout.
+                    _authFails++;
+                    showReconnecting(true);
+                    if (_authFails >= 3) {
+                        location.href = LOGIN_URL;
+                    }
+                    return;
+                }
+                if (!res.ok) {
+                    // 5xx/dll - gangguan sementara, jangan reload ke halaman error.
+                    showReconnecting(true);
+                    return;
+                }
+                _authFails = 0;
+                showReconnecting(false);
+                location.reload();
+            })
+            .catch(function () {
+                // Gangguan jaringan sesaat - coba lagi tick berikutnya, jangan paksa logout.
+                showReconnecting(true);
+            });
+    }
+    setInterval(safeRefresh, 8000);
 </script>
 @endpush
 @endsection

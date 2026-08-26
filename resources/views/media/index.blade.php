@@ -81,6 +81,46 @@
     @if (session('ok'))<div class="ok">{{ session('ok') }}</div>@endif
     @if ($errors->any())<div class="err-flash">{{ $errors->first() }}</div>@endif
 
+    <div class="up-card">
+        @php
+            $rtPresets = [
+                'WELCOME TO CIPUTRA HOSPITAL SURABAYA',
+                'SELAMAT DATANG DI CIPUTRA HOSPITAL SURABAYA',
+            ];
+            $rtCurrent = old('running_text', $runningText);
+        @endphp
+        <form method="post" action="{{ route('media.running-text.update') }}" id="rt-form">
+            @csrf
+            @method('PUT')
+            <div class="fg" style="margin-bottom:1.1rem;">
+                <label>Teks Berjalan (Running Text) di Layar</label>
+                <input type="text" name="running_text" id="rt-input" maxlength="500" value="{{ $rtCurrent }}" required>
+                <span class="hint">Tampil bergulir di bagian bawah semua layar display.</span>
+            </div>
+
+            <label style="font-size:.8rem;font-weight:600;color:#556;display:block;margin-bottom:.2rem;">Pilih Cepat</label>
+            @foreach ($rtPresets as $preset)
+                <label class="cp-mode">
+                    <input type="radio" name="rt_quick" value="{{ $preset }}"
+                           {{ $rtCurrent === $preset ? 'checked' : '' }}
+                           onchange="document.getElementById('rt-input').value = this.value;">
+                    <span><b>{{ $preset }}</b></span>
+                </label>
+            @endforeach
+
+            <button type="submit" class="btn-primary" style="margin-top:.9rem;">✓ Simpan</button>
+        </form>
+    </div>
+
+    <script>
+        document.getElementById('rt-input').addEventListener('input', function () {
+            var v = this.value;
+            document.querySelectorAll('input[name="rt_quick"]').forEach(function (r) {
+                r.checked = (r.value === v);
+            });
+        });
+    </script>
+
     <div class="tabs">
         <button class="tab on" data-pane="video" onclick="showTab('video')">Video <span class="cnt">{{ $videos->count() }}</span></button>
         <button class="tab" data-pane="banner" onclick="showTab('banner')">Banner <span class="cnt">{{ $banners->count() }}</span></button>
@@ -236,7 +276,7 @@
         function openClinicModal(type, id, nama, codes){
             var f=document.getElementById('clForm');
             f.action = (type==='video'?VIDEO_BASE:BANNER_BASE) + '/' + id + '/klinik';
-            document.getElementById('clTitle').textContent = 'Tampilkan di Klinik — ' + nama;
+            document.getElementById('clTitle').textContent = 'Tampilkan di Klinik - ' + nama;
             var pick = codes.length > 0;
             f.querySelector('input[name=clinic_mode][value=all]').checked = !pick;
             f.querySelector('input[name=clinic_mode][value=pick]').checked = pick;

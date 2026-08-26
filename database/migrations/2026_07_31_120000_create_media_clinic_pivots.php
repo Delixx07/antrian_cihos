@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Penargetan media (banner/video) ke klinik/poli tertentu untuk layar tunggu.
  * Menyimpan service_unit_code (klinik ada di DB master, jadi tak pakai FK
- * lintas-database — cukup kode string). Bila sebuah media TIDAK punya baris di
+ * lintas-database - cukup kode string). Bila sebuah media TIDAK punya baris di
  * sini, artinya tampil di SEMUA klinik (default).
  */
 return new class extends Migration

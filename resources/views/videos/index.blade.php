@@ -160,7 +160,7 @@
         function openClinicModal(id, judul, codes){
             var f=document.getElementById('clForm');
             f.action = CL_BASE + '/' + id + '/klinik';
-            document.getElementById('clTitle').textContent = 'Tampilkan di Klinik — ' + judul;
+            document.getElementById('clTitle').textContent = 'Tampilkan di Klinik - ' + judul;
             // Set mode & centang
             var pick = codes.length > 0;
             f.querySelector('input[name=clinic_mode][value=all]').checked = !pick;

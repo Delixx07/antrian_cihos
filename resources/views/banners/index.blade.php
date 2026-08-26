@@ -136,7 +136,7 @@
         function openClinicModal(id, nama, codes){
             var f=document.getElementById('clForm');
             f.action = CL_BASE + '/' + id + '/klinik';
-            document.getElementById('clTitle').textContent = 'Tampilkan di Klinik — ' + nama;
+            document.getElementById('clTitle').textContent = 'Tampilkan di Klinik - ' + nama;
             var pick = codes.length > 0;
             f.querySelector('input[name=clinic_mode][value=all]').checked = !pick;
             f.querySelector('input[name=clinic_mode][value=pick]').checked = pick;

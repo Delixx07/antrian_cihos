@@ -15,7 +15,7 @@
 </head>
 <body>
     <div class="bar">
-        <b>Sistem Antrian — Ciputra Hospital Surabaya</b>
+        <b>Sistem Antrian - Ciputra Hospital Surabaya</b>
         <form method="post" action="{{ route('logout') }}">
             @csrf
             <button class="logout" type="submit">Keluar</button>

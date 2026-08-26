@@ -55,7 +55,7 @@ class Video extends Model
     /**
      * Batasi query ke media yang boleh tampil di sebuah klinik.
      *
-     * Tanpa ?clinic= (layar umum) HANYA video "Semua Klinik" yang tampil —
+     * Tanpa ?clinic= (layar umum) HANYA video "Semua Klinik" yang tampil -
      * video bertarget tidak boleh bocor ke layar klinik lain.
      * Dengan ?clinic=X: video "Semua Klinik" + video bertarget X.
      */

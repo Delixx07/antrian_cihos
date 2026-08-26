@@ -106,18 +106,20 @@
                 <tbody>
                     @forelse ($doctors as $d)
                         @php
-                            $p = $photos[$d->paramedic_id] ?? null;
+                            // String URL langsung (upload lewat app, atau fallback foto
+                            // lama di img-dokter) - lihat DoctorPhoto::urlFor().
+                            $photoUrl = $photos[$d->paramedic_id] ?? null;
                             $ini = collect(preg_split('/\s+/', preg_replace('/\b(dr|drg|Sp|Prof|Dr)\.?/i','',$d->paramedic_name)))->filter()->take(2)->map(fn($w)=>mb_substr($w,0,1))->implode('');
                         @endphp
                         <tr>
                             <td>
-                                @if ($p)
-                                    <img class="thumb" src="{{ $p->url() }}?v={{ $p->updated_at?->timestamp }}" alt="foto">
+                                @if ($photoUrl)
+                                    <img class="thumb" src="{{ $photoUrl }}" alt="foto">
                                 @else
                                     <div class="thumb-ph">{{ strtoupper($ini) ?: 'DR' }}</div>
                                 @endif
                             </td>
-                            <td><span class="badge">{{ $d->paramedic_code ?: '—' }}</span></td>
+                            <td><span class="badge">{{ $d->paramedic_code ?: '-' }}</span></td>
                             <td style="font-weight:600;color:var(--ink);">{{ $d->paramedic_name }}</td>
                             <td><span class="badge spec">{{ $d->specialty_name ?: 'General' }}</span></td>
                             <td>
@@ -128,7 +130,7 @@
                                 @endif
                             </td>
                             <td>
-                                @php $row = ['id'=>$d->paramedic_id,'name'=>$d->paramedic_name,'code'=>$d->paramedic_code,'photo'=>$p?->url()]; @endphp
+                                @php $row = ['id'=>$d->paramedic_id,'name'=>$d->paramedic_name,'code'=>$d->paramedic_code,'photo'=>$photoUrl]; @endphp
                                 <button type="button" class="act" title="Edit Foto" onclick="openPhoto({{ \Illuminate\Support\Js::from($row) }})">
                                     <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
                                 </button>
@@ -160,7 +162,7 @@
                         <label class="up-head" id="dropZone" for="pFile">
                             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 10V9C7 6.23858 9.23858 4 12 4C14.7614 4 17 6.23858 17 9V10C19.2091 10 21 11.7909 21 14C21 15.4806 20.1956 16.8084 19 17.5M7 10C4.79086 10 3 11.7909 3 14C3 15.4806 3.8044 16.8084 5 17.5M7 10C7.43285 10 7.84965 10.0688 8.24006 10.1959M12 12V21M12 12L15 15M12 12L9 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                             <p>Browse file untuk diupload</p>
-                            <p style="font-size:.72rem;opacity:.7">JPG, PNG, WEBP — maks 4MB</p>
+                            <p style="font-size:.72rem;opacity:.7">JPG, PNG, WEBP - maks 4MB</p>
                         </label>
                         <label class="up-foot" for="pFile">
                             <svg class="fico" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M15.331 6H8.5v20h15V14.154h-8.169z"/><path d="M18.153 6h-.009v5.342H23.5v-.002z"/></svg>
@@ -177,7 +179,7 @@
                             <button type="button" onclick="cropRotate()" title="Putar">⟳ Putar</button>
                             <button type="button" onclick="cropReset()" title="Ulang">✕ Ganti foto</button>
                         </div>
-                        <p class="crop-hint">Geser & atur area — foto akan disimpan {{ 400 }}×{{ 400 }} px (kotak).</p>
+                        <p class="crop-hint">Geser & atur area - foto akan disimpan {{ 400 }}×{{ 400 }} px (kotak).</p>
                     </div>
 
                     <input type="file" name="_src" id="pFile" accept="image/*" hidden onchange="onPick(this)">

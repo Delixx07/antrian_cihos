@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Speaker Pusat — Antrian Ciputra Hospital</title>
+    <title>Speaker Pusat - Antrian Ciputra Hospital</title>
     <link rel="icon" href="{{ asset('cihoslogo_biruijo.png') }}" type="image/png">
     <style>
         :root{--navy:#0b2f6b;--navy3:#001b45;--gold:#c9992e;--gold-lt:#e8be5a;
@@ -76,7 +76,7 @@
 
             <div class="now" id="now">
                 <div class="lbl">Sedang memanggil</div>
-                <div class="no" id="nowNo">—</div>
+                <div class="no" id="nowNo">-</div>
                 <div class="to" id="nowTo"></div>
             </div>
 
@@ -108,7 +108,7 @@
         function log(msg){
             var d = document.createElement('div');
             var t = new Date().toTimeString().slice(0,8);
-            d.innerHTML = '<b>'+t+'</b> — '+msg;
+            d.innerHTML = '<b>'+t+'</b> - '+msg;
             el('log').prepend(d);
             while(el('log').children.length > 40) el('log').lastChild.remove();
         }
@@ -128,14 +128,14 @@
         }
 
         /*
-         * MULAI OTOMATIS — tidak perlu menekan tombol apa pun.
+         * MULAI OTOMATIS - tidak perlu menekan tombol apa pun.
          *
          * Bila halaman dibuka lewat buka-speaker.bat (memakai flag
          * --autoplay-policy=no-user-gesture-required), suara langsung boleh
          * berbunyi sehingga speaker aktif sendiri saat PC menyala.
          *
          * Bila ternyata browser masih memblokir (dibuka manual tanpa flag),
-         * tombol "Aktifkan Speaker" otomatis muncul kembali — lihat play().
+         * tombol "Aktifkan Speaker" otomatis muncul kembali - lihat play().
          */
         window.addEventListener('load', function(){
             player.muted = true;

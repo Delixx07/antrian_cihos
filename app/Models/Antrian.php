@@ -56,7 +56,7 @@ class Antrian extends Model
         self::RESEP_NON_RACIK => 'Resep Non-Racik',
     ];
 
-    // Farmasi jenis (alias status resep — racik/non_racik)
+    // Farmasi jenis (alias status resep - racik/non_racik)
     public const FARMASI_RACIK     = 'racik';
     public const FARMASI_NON_RACIK = 'non_racik';
 
@@ -73,7 +73,7 @@ class Antrian extends Model
             return 'Resep CLEAR';
         }
 
-        return self::RESEP_LABEL[$this->status_resep] ?? '—';
+        return self::RESEP_LABEL[$this->status_resep] ?? '-';
     }
 
     /** Warna status: clear=hijau, ada resep=kuning, tanpa=abu. */
@@ -108,7 +108,7 @@ class Antrian extends Model
     }
 
     /**
-     * Pasien NYATA saja — yang sudah check-in/registrasi.
+     * Pasien NYATA saja - yang sudah check-in/registrasi.
      *
      * Baris `is_booking` hanya ditampilkan SAMAR di layar supaya urutan
      * antrian terlihat utuh sejak awal; ia belum boleh dipanggil, dihitung
@@ -127,7 +127,7 @@ class Antrian extends Model
 
     /**
      * Antrian FARMASI = pasien ber-resep yang BELUM clear, dengan jenis tertentu
-     * (racik/non_racik). Farmasi bekerja berdasar STATUS RESEP, bukan tahap —
+     * (racik/non_racik). Farmasi bekerja berdasar STATUS RESEP, bukan tahap -
      * pasien tetap di tahap kasir sepanjang alur. Farmasi hanya melihat ini.
      */
     public function scopeFarmasiQueue($query, string $jenis)
@@ -143,6 +143,23 @@ class Antrian extends Model
     public function isDipanggil(string $tahap): bool
     {
         return $this->{"{$tahap}_panggil_at"} !== null && $this->{"{$tahap}_selesai_at"} === null;
+    }
+
+    /**
+     * Guard "tak bisa panggil baru sebelum yg lama selesai" - dipakai di
+     * Klinik/Kasir/Farmasi (masing-masing beda kolom filter: paramedic_id vs
+     * counter, dan Farmasi tak difilter tahap karena tetap di tahap kasir).
+     * Sebelumnya diduplikasi mentah di 3 controller; disatukan di sini supaya
+     * kalau ada perubahan aturan, cukup dibetulkan sekali.
+     */
+    public static function hasActiveCall(string $tahapPrefix, string $column, $value, ?string $tahapFilter = null): bool
+    {
+        return static::today()
+            ->when($tahapFilter, fn ($q) => $q->where('tahap', $tahapFilter))
+            ->where($column, $value)
+            ->whereNotNull("{$tahapPrefix}_panggil_at")
+            ->whereNull("{$tahapPrefix}_selesai_at")
+            ->exists();
     }
 
     // ---- Aksi alur ----
@@ -180,7 +197,7 @@ class Antrian extends Model
 
     /**
      * Selesaikan tahap. Alur BERCABANG (sesuai aplikasi lama): tiap tahap bisa
-     * jadi ujung — mis. klinik selesai tanpa kasir, atau kasir selesai tanpa
+     * jadi ujung - mis. klinik selesai tanpa kasir, atau kasir selesai tanpa
      * farmasi. Penelusuran ke tahap berikutnya DITENTUKAN pemanggil lewat $next:
      *
      *   $next = null (default) → SELESAI TOTAL (tahap akhir untuk pasien ini).
@@ -215,66 +232,42 @@ class Antrian extends Model
     // ---- Alur bisnis (resep) ----
 
     /**
-     * KLINIK: dokter selesai → transfer pasien ke KASIR dengan status resep.
-     * SEMUA pasien masuk tahap KASIR (kasir melihat SEMUA pasien). Namun:
-     *   - Tanpa resep         → kasir langsung boleh memanggil.
-     *   - Ada resep (blm clear) → kasir TAK boleh memanggil dulu. FARMASI yang
-     *     melihat & memproses (berdasar status_resep, bukan tahap). Setelah
-     *     farmasi selesai (resep_clear), barulah kasir boleh memanggil.
-     * Waktu tunggu dihitung dari transfer klinik ini (transfer_at).
-     * $statusResep: non_resep | racik | non_racik.
+     * KASIR: pilih status resep saat menyelesaikan pasien, lalu dorong ke
+     * FARMASI (racik/non_racik) - farmasi adalah UJUNG alur untuk pasien
+     * ber-resep, tak ada balik ke kasir. $statusResep: racik | non_racik.
      */
-    public function transferKeKasir(string $statusResep): void
+    public function kirimKeFarmasi(string $statusResep): void
     {
-        $now = now();
-        $adaResep = in_array($statusResep, [self::RESEP_RACIK, self::RESEP_NON_RACIK], true);
-
         $this->forceFill([
-            'klinik_selesai_at' => $now,
-            'transfer_at'       => $now,           // basis waktu tunggu (kasir & farmasi)
-            'status_resep'      => $statusResep,
-            'farmasi_jenis'     => $this->adaResepJenis($statusResep), // racik/non_racik utk farmasi
-            'tahap'             => self::TAHAP_KASIR,
-            'kasir_tunggu_at'   => $now,
-            // Pasien ber-resep juga langsung "menunggu" di farmasi (waktu = transfer).
-            'farmasi_tunggu_at' => $adaResep ? $now : null,
-            'panggil_count'     => 0,
-            'counter'           => null,
+            'status_resep'  => $statusResep,
+            'farmasi_jenis' => $statusResep,
         ])->save();
-    }
 
-    private function adaResepJenis(string $statusResep): ?string
-    {
-        return in_array($statusResep, [self::RESEP_RACIK, self::RESEP_NON_RACIK], true)
-            ? $statusResep : null;
+        $this->selesaikan(self::TAHAP_KASIR, self::TAHAP_FARMASI);
     }
 
     /**
-     * KASIR selesai memanggil → SELESAI TOTAL. Kasir hanya bisa memanggil pasien
-     * tanpa resep, atau pasien ber-resep yang SUDAH clear dari farmasi — jadi
-     * saat kasir menyelesaikan, alur untuk pasien ini memang berakhir.
+     * KASIR selesai memanggil, TANPA resep → SELESAI TOTAL.
      */
     public function selesaiKasir(): void
     {
         $this->forceFill([
+            'status_resep'     => self::RESEP_NON,
             'kasir_selesai_at' => now(),
             'tahap'            => self::TAHAP_SELESAI,
         ])->save();
     }
 
     /**
-     * FARMASI selesai memproses resep → status "Resep CLEAR". Pasien TETAP di
-     * tahap KASIR (tak pernah pindah tahap) — kini kasir boleh memanggilnya
-     * untuk pembayaran. Farmasi bekerja "di samping" alur kasir.
+     * FARMASI selesai memproses resep → "Resep CLEAR" DAN selesai total.
+     * Farmasi adalah ujung alur (tak ada balik ke kasir untuk bayar obat).
      */
     public function selesaiFarmasi(): void
     {
-        // Pasien tetap di tahap KASIR — hanya tandai resep clear + waktu selesai
-        // farmasi. Tak menyentuh field kasir (panggil/counter) supaya antrian
-        // kasir tak teracak; kasir kini boleh memanggilnya (guard resep lolos).
         $this->forceFill([
             'farmasi_selesai_at' => now(),
             'resep_clear'        => true,
+            'tahap'              => self::TAHAP_SELESAI,
         ])->save();
     }
 
@@ -282,8 +275,8 @@ class Antrian extends Model
      * TARIK pasien kembali ke KLINIK (dokter memanggil ulang pasien yang sudah
      * lanjut ke kasir/farmasi). Membatalkan SELURUH jejak alur hilir (kasir,
      * farmasi, resep) supaya pasien TIDAK tampil dobel di display farmasi/kasir.
-     * Kebalikan dari transferKeKasir(). Setelah ini dokter menyelesaikan lagi &
-     * memilih status resep → pasien masuk kembali ke kasir/farmasi seperti biasa.
+     * Setelah ini dokter menyelesaikan lagi → pasien masuk kembali ke kasir
+     * seperti biasa, lalu kasir yang memilih status resepnya.
      */
     public function tarikKeKlinik(): void
     {

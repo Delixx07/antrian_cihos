@@ -8,7 +8,7 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 /*
- * AUTO-SYNC ANTRIAN — tarik pasien baru dari appointment tiap menit.
+ * AUTO-SYNC ANTRIAN - tarik pasien baru dari appointment tiap menit.
  *
  * Selain sync yang berjalan saat halaman antrian dibuka
  * (AntrianSync::pullThrottled()), jadwal ini membuat pasien tetap masuk

@@ -136,7 +136,7 @@
                 <button class="btn" type="submit">Login</button>
             </form>
 
-            <div class="foot">© {{ date('Y') }} Ciputra Hospital Surabaya — Queue System</div>
+            <div class="foot">© {{ date('Y') }} Ciputra Hospital Surabaya - Queue System</div>
         </div>
     </div>
 

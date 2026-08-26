@@ -11,13 +11,18 @@ use Illuminate\Support\Facades\DB;
  * Tarik registrasi hari ini → tabel antrian lokal.
  *
  * SUMBER DATA: tabel `appointments` di database appointment (MySQL lokal).
- * Semua registrasi — lewat aplikasi appointment, TapTalk/WA bot, maupun
- * Kiosk — PASTI melewati tabel ini sebelum dikirim ke MEDINFRAS. Membaca
+ * Semua registrasi - lewat aplikasi appointment, TapTalk/WA bot, maupun
+ * Kiosk - PASTI melewati tabel ini sebelum dikirim ke MEDINFRAS. Membaca
  * langsung dari sini punya beberapa keuntungan penting:
  *
- *   1. NOMOR TIKET BENAR. `RegistrationTicketNo` di tabel ini sudah berisi
- *      nomor SLOT (mis. FD015), bukan QueueNo mentah MEDINFRAS (FD001).
- *   2. SEKETIKA. Begitu pasien registrasi, datanya langsung terbaca —
+ *   1. NOMOR TIKET BENAR. `DisplayTicketNo` di tabel ini berisi nomor SLOT
+ *      dokter (posisi pasien di grid jadwal - sama seperti yang tampil di
+ *      layar Patient Appointment app appointment), BUKAN `RegistrationTicketNo`
+ *      yang QueueNo-nya pooled per unit+sesi lintas dokter (mis. FD001 dari
+ *      MEDINFRAS, padahal appointment app menampilkan FD015 untuk pasien yang
+ *      sama). Jatuh ke RegistrationTicketNo hanya bila DisplayTicketNo belum
+ *      sempat dihitung (appointment app belum sync untuk dokter ini).
+ *   2. SEKETIKA. Begitu pasien registrasi, datanya langsung terbaca -
  *      tidak menunggu cache/polling API.
  *   3. TIDAK BISA TIMEOUT. Sebelumnya memakai HTTP ke aplikasi appointment
  *      yang query-nya berat (view vRegistration SQL Server) dan sering
@@ -38,7 +43,7 @@ class AntrianSync
     private const FAIL_BACKOFF_SECONDS = 10;
 
     /**
-     * Sync yang di-throttle — dipanggil saat halaman antrian dibuka supaya
+     * Sync yang di-throttle - dipanggil saat halaman antrian dibuka supaya
      * pasien baru muncul otomatis. Aman dipanggil sesering apa pun.
      */
     public function pullThrottled(?string $date = null): void
@@ -85,7 +90,7 @@ class AntrianSync
         // booking-nya), supaya tidak query berulang di dalam loop.
         $existing = Antrian::whereDate('tanggal', $date)
             ->whereNotNull('appointment_no')
-            ->get(['id', 'appointment_no', 'is_booking'])
+            ->get(['id', 'appointment_no', 'is_booking', 'no_antrian', 'queue_no'])
             ->keyBy('appointment_no');
 
         // Nama dokter & poli dari master (untuk ditampilkan di layar).
@@ -108,12 +113,34 @@ class AntrianSync
                 if ($prev->is_booking && ! $isBooking) {
                     Antrian::whereKey($prev->id)->update([
                         'is_booking'       => false,
-                        'no_antrian'       => $r->RegistrationTicketNo ?: null,
+                        'no_antrian'       => $r->DisplayTicketNo ?: $r->RegistrationTicketNo ?: null,
+                        'queue_no'         => (int) ($r->DisplayQueueNo ?: $r->QueueNo ?? 0),
                         'registration_no'  => $r->RegistrationNo ?: null,
                         'klinik_tunggu_at' => $this->waitingAt($date, $r),
                         'updated_at'       => now(),
                     ]);
                     $promoted++;
+                    continue;
+                }
+
+                // Sudah ada (booking maupun sudah check-in) — segarkan nomor
+                // tiket/antrian kalau appointment app mengubah DisplayTicketNo/
+                // DisplayQueueNo belakangan (mis. baru terhitung setelah antrian
+                // ini pertama kali sync), supaya kedua aplikasi tidak beda nomor.
+                // Tidak pernah mundur ke kosong: hanya menimpa kalau nilai baru
+                // ada isinya dan beda dari yang tersimpan.
+                $freshTicket = $r->DisplayTicketNo ?: $r->RegistrationTicketNo ?: null;
+                $freshQueue  = (int) ($r->DisplayQueueNo ?: $r->QueueNo ?? 0);
+                $refresh = [];
+                if ($freshTicket && $freshTicket !== $prev->no_antrian) {
+                    $refresh['no_antrian'] = $freshTicket;
+                }
+                if ($freshQueue && $freshQueue !== (int) $prev->queue_no) {
+                    $refresh['queue_no'] = $freshQueue;
+                }
+                if ($refresh) {
+                    $refresh['updated_at'] = now();
+                    Antrian::whereKey($prev->id)->update($refresh);
                 }
 
                 continue;
@@ -128,9 +155,10 @@ class AntrianSync
                 // Booking belum punya nomor tiket resmi. Diberi nomor
                 // PERKIRAAN dari prefix ruang + slot supaya urutannya di layar
                 // sudah benar sejak awal; diganti nomor asli saat check-in.
-                'no_antrian'       => $r->RegistrationTicketNo
+                'no_antrian'       => $r->DisplayTicketNo
+                                        ?: $r->RegistrationTicketNo
                                         ?: $this->tentativeTicket($r, $doc['room'] ?? null),
-                'queue_no'         => (int) ($r->QueueNo ?? 0),
+                'queue_no'         => (int) ($r->DisplayQueueNo ?: $r->QueueNo ?? 0),
                 'pasien_nama'      => $r->PatientName ?: null,
                 'pasien_nomrn'     => $r->MedicalNo ?: null,
                 'pasien_jk'        => $this->gender($r->Gender ?? null),
@@ -147,16 +175,63 @@ class AntrianSync
             $added++;
         }
 
+        $removed = $this->removeVoidedBookings($date);
+
         return [
             'ok'      => true,
             'added'   => $added,
+            'removed' => $removed,
             'total'   => Antrian::whereDate('tanggal', $date)->count(),
             'message' => null,
         ];
     }
 
     /**
-     * Appointment hari ini dari tabel appointment — termasuk yang BELUM
+     * Buang baris antrian yang appointment sumbernya SUDAH DIBATALKAN
+     * (IsVoided) di appointment app, tapi terlanjur ke-sync SEBELUM
+     * dibatalkan. Tanpa ini baris itu jadi "hantu" - nyangkut selamanya di
+     * layar, dan nomor tiketnya bisa dipakai ulang oleh pasien baru yang
+     * beneran → tampil dobel (satu redup/booking punya-lama, satu nyata).
+     *
+     * Hanya baris yang MASIH `is_booking` (belum check-in, belum dipanggil)
+     * yang dibuang - pasien yang SUDAH check-in/dipanggil tidak disentuh,
+     * meski appointment-nya belakangan dibatalkan (kasus itu perlu
+     * penanganan manual, bukan otomatis dihapus dari riwayat).
+     */
+    private function removeVoidedBookings(string $date): int
+    {
+        $bookingRows = Antrian::whereDate('tanggal', $date)
+            ->where('is_booking', true)
+            ->whereNull('klinik_panggil_at')
+            ->whereNotNull('appointment_no')
+            ->pluck('appointment_no');
+
+        if ($bookingRows->isEmpty()) {
+            return 0;
+        }
+
+        $voided = rescue(
+            fn () => DB::connection('appointment')->table('appointments')
+                ->whereIn('AppointmentNo', $bookingRows->all())
+                ->where('IsVoided', 1)
+                ->pluck('AppointmentNo'),
+            collect(),
+            false
+        );
+
+        if ($voided->isEmpty()) {
+            return 0;
+        }
+
+        return Antrian::whereDate('tanggal', $date)
+            ->where('is_booking', true)
+            ->whereNull('klinik_panggil_at')
+            ->whereIn('appointment_no', $voided->all())
+            ->delete();
+    }
+
+    /**
+     * Appointment hari ini dari tabel appointment - termasuk yang BELUM
      * registrasi (booking), kecuali yang dibatalkan (IsVoided).
      *
      * Booking ikut ditarik supaya urutan antrian terlihat utuh sejak awal:
@@ -171,6 +246,7 @@ class AntrianSync
             ->orderBy('QueueNo')
             ->get([
                 'AppointmentNo', 'RegistrationNo', 'RegistrationTicketNo',
+                'DisplayQueueNo', 'DisplayTicketNo',
                 'QueueNo', 'PatientName', 'MedicalNo', 'Gender',
                 'ParamedicID', 'ServiceUnitCode', 'RoomCode',
                 'StartTime', 'RegisteredAt',
@@ -210,7 +286,7 @@ class AntrianSync
      * Jenis kelamin → kode 1 huruf.
      *
      * Tabel appointment menyimpan teks penuh ("Laki-laki"/"Perempuan"),
-     * sedangkan kolom antrian.pasien_jk hanya varchar(5) — tanpa konversi
+     * sedangkan kolom antrian.pasien_jk hanya varchar(5) - tanpa konversi
      * ini penyimpanan gagal dengan "Data too long".
      */
     private function gender(?string $g): ?string
@@ -223,7 +299,7 @@ class AntrianSync
         return str_starts_with(mb_strtoupper($g), 'L') ? 'L' : 'P';
     }
 
-    /** Nama dokter, poli, & ruang dari master — dipetakan per paramedic_id. */
+    /** Nama dokter, poli, & ruang dari master - dipetakan per paramedic_id. */
     private function doctorInfo(array $ids): array
     {
         if (! $ids) {

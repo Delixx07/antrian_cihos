@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Kontrol akses aplikasi Antrian — LOKAL (DB antrian_cihos, bukan dbuser).
+ * Kontrol akses aplikasi Antrian - LOKAL (DB antrian_cihos, bukan dbuser).
  *
  * Identitas & password diverifikasi ke direktori RS (dbuser.user_detail, SHA1).
  * Tabel ini menentukan SIAPA dari direktori itu yang boleh masuk aplikasi

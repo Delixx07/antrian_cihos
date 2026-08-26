@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * READ-ONLY. Master dokter dari database aplikasi Appointment (mirror MEDINFRAS).
- * Jangan menulis — data ditimpa oleh sync di aplikasi Appointment.
+ * Jangan menulis - data ditimpa oleh sync di aplikasi Appointment.
  */
 class Doctor extends Model
 {

@@ -13,7 +13,7 @@
     .filters{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin-bottom:1.1rem;}
     .filters input[type=date]{padding:.65rem .9rem;border:1px solid var(--line);border-radius:11px;font-size:.88rem;outline:none;background:#fff;font-variant-numeric:tabular-nums;}
     .filters input[type=date]:focus{border-color:var(--brand);box-shadow:0 0 0 3px #2563eb26;}
-    /* Combobox dokter — gaya konsisten dgn appointment (trigger + dropdown) */
+    /* Combobox dokter - gaya konsisten dgn appointment (trigger + dropdown) */
     .doc-combo{position:relative;width:420px;max-width:100%;}
     .doc-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;gap:.6rem;
         border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:11px;padding:.65rem .9rem;
@@ -55,13 +55,13 @@
 @endpush
 
 @section('content')
-    <h1 class="page-title">Antrian — Semua Dokter</h1>
+    <h1 class="page-title">Antrian - Semua Dokter</h1>
 
     @php $selDoc = $doctors->firstWhere('paramedic_id', (int) $paramedicId); @endphp
     <div class="filters">
         <form method="get" style="display:flex;gap:.7rem;flex-wrap:wrap;align-items:center;" id="filterForm">
             <input type="hidden" name="paramedic_id" id="docId" value="{{ $paramedicId }}">
-            {{-- Combobox dokter (trigger + dropdown pencarian) — gaya appointment --}}
+            {{-- Combobox dokter (trigger + dropdown pencarian) - gaya appointment --}}
             <div class="doc-combo" id="docCombo">
                 <button type="button" class="doc-trigger" id="docTrigger">
                     <span class="lb {{ $selDoc ? '' : 'ph' }}" id="docLabel">

@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Login sistem antrian — verifikasi ke direktori RS (dbuser.user_detail, SHA1).
+ * Login sistem antrian - verifikasi ke direktori RS (dbuser.user_detail, SHA1).
  * Sesi menyimpan identitas minimal; tak ada Sign Up (user dibuat oleh admin RS).
  */
 class AuthController extends Controller
@@ -78,7 +78,7 @@ class AuthController extends Controller
             }
 
             // Dokter (role klinik): tempatkan ke RUANG dari jadwal hari ini.
-            // Dibungkus rescue supaya DB master lambat/mati TAK memblokir login —
+            // Dibungkus rescue supaya DB master lambat/mati TAK memblokir login -
             // dokter tetap masuk, hanya belum menempati ruang.
             if ($access->isDoctor()) {
                 $redirect = rescue(fn () => $this->assignRoomOnLogin($request, $access), null, false);
@@ -92,7 +92,7 @@ class AuthController extends Controller
             Log::warning('Antrian login gagal: '.$e->getMessage());
 
             return back()->withInput($request->only('username'))
-                ->withErrors(['username' => 'Tidak dapat memverifikasi login — cek koneksi database.']);
+                ->withErrors(['username' => 'Tidak dapat memverifikasi login - cek koneksi database.']);
         }
     }
 

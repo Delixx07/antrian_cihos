@@ -19,13 +19,13 @@ REM  Keluar: tekan ALT+F4.
 REM ============================================================
 
 REM --- IP PC yang menjalankan XAMPP (server antrian) ---
-set "SERVER=172.19.4.232"
+set "SERVER=172.20.0.39"
 
 REM Bila .bat ini dijalankan DI PC server sendiri, boleh pakai:
 REM set "SERVER=localhost"
 
 set "URL=http://%SERVER%/display/speaker"
-
+    
 REM --- Profil terpisah agar tidak mengganggu Chrome sehari-hari ---
 set "PROFIL=%LOCALAPPDATA%\AntrianSpeaker"
 

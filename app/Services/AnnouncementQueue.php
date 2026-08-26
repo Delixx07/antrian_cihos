@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Cache;
  * tidak ada yang terdengar jelas.
  *
  * Cara kerja: setiap panggilan dimasukkan ke ANTREAN di server (cache).
- * Perangkat pemutar (speaker pusat) mengambil satu per satu — item berikutnya
+ * Perangkat pemutar (speaker pusat) mengambil satu per satu - item berikutnya
  * baru diberikan setelah item sebelumnya selesai diputar. Urutan mengikuti
  * siapa yang menekan lebih dulu (FIFO).
  */
@@ -29,7 +29,7 @@ class AnnouncementQueue
 
     /**
      * Perangkat pemutar dianggap mati bila tidak mengabarkan "selesai" dalam
-     * rentang ini — item yang sedang diputar dilepas agar antrean tidak macet.
+     * rentang ini - item yang sedang diputar dilepas agar antrean tidak macet.
      */
     private const PLAYING_TIMEOUT = 45;
 

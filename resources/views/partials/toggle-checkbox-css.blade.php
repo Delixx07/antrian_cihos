@@ -29,7 +29,7 @@
         transition:stroke-dashoffset .3s ease;transition-delay:.2s;}
     .checkbox-wrapper-12 .cbx input:checked{border-color:#16a34a;background:#16a34a;}
     /* Splash HANYA saat diklik user (class .tgc-anim ditambah JS). Tanpa ini
-       animasi ikut jalan tiap halaman dimuat ulang — sehingga semua toggle
+       animasi ikut jalan tiap halaman dimuat ulang - sehingga semua toggle
        yang sedang aktif ikut beranimasi saat satu toggle ditekan. */
     .checkbox-wrapper-12.tgc-anim .cbx input:checked + label{animation:splash-12 .6s ease forwards;}
     .checkbox-wrapper-12 .cbx input:checked + label + svg path{stroke-dashoffset:0;}

@@ -7,13 +7,25 @@ use Illuminate\Http\Request;
 
 /**
  * Counter Kasir (role kasir_administrasi & kasir_farmasi). Pola sama dgn Farmasi
- * tapi tahap = KASIR, dan saat "Selesai" kasir MEMILIH tujuan: selesai total
- * (tak ada resep) atau lanjut ke Farmasi (ada resep) — alur bercabang sesuai
- * aplikasi lama (±36% pasien kasir lanjut ke farmasi).
+ * tapi tahap = KASIR. Klinik tak lagi memilih status resep - pasien langsung
+ * dikirim ke sini, dan saat "Selesai" KASIR yang MEMILIH tujuan: Tanpa Resep
+ * (selesai total), Resep Racik, atau Resep Non-Racik (lanjut ke Farmasi -
+ * farmasi adalah ujung alur, tak ada balik ke kasir untuk bayar obat).
  */
 class KasirController extends Controller
 {
     private const TAHAP = Antrian::TAHAP_KASIR;
+
+    /**
+     * Counter ini masih punya pasien yang dipanggil TAPI belum Selesai?
+     * Dipakai supaya tak bisa memanggil pasien baru (atau panggil ulang dari
+     * riwayat) sebelum yang sekarang benar-benar selesai - kalau tidak,
+     * "Sedang Dipanggil" numpuk dan tidak jelas siapa yang benar dilayani.
+     */
+    private function hasActiveKasir(string $counter): bool
+    {
+        return Antrian::hasActiveCall('kasir', 'counter', $counter, self::TAHAP);
+    }
 
     public function pilihCounter()
     {
@@ -73,14 +85,12 @@ class KasirController extends Controller
             return redirect()->route('kasir.pilih-counter');
         }
 
-        // Guard: pasien ber-resep yang BELUM diproses farmasi (belum CLEAR)
-        // tak boleh dipanggil kasir dulu — harus ke Farmasi lebih dulu.
-        if ($antrian->adaResep() && ! $antrian->resep_clear) {
-            return back()->with('error', $antrian->no_antrian.' masih menunggu Farmasi — belum bisa dipanggil kasir.');
-        }
-
         if ($antrian->tahap !== self::TAHAP) {
             return back()->with('error', 'Pasien tidak berada di tahap kasir.');
+        }
+
+        if ($this->hasActiveKasir($counter)) {
+            return back()->with('error', 'Selesaikan dulu pasien yang sedang dilayani sebelum memanggil yang baru.');
         }
 
         $antrian->panggil(self::TAHAP, $counter);
@@ -93,6 +103,14 @@ class KasirController extends Controller
     /** Recall (panggil ulang) pasien tertentu dari baris "Di Panggil". */
     public function ulang(Antrian $antrian)
     {
+        // Pasien "Sedang Dipanggil" ditampilkan LINTAS counter (supaya semua
+        // kasir bisa lihat siapa yang sedang dilayani di mana), tapi Recall
+        // cuma boleh dari counter yang MEMANGGIL pasien itu - kalau tidak,
+        // counter mana pun bisa mengulang panggilan pasien counter lain.
+        if ($antrian->counter !== session('kasir_counter')) {
+            return back()->with('error', 'Pasien ini sedang ditangani counter lain.');
+        }
+
         $antrian->ulang(self::TAHAP);
 
         return back()
@@ -101,7 +119,7 @@ class KasirController extends Controller
     }
 
     /**
-     * Panggil ULANG pasien dari RIWAYAT (sudah selesai) — tarik kembali ke kasir
+     * Panggil ULANG pasien dari RIWAYAT (sudah selesai) - tarik kembali ke kasir
      * bila perlu (mis. salah, atau ada transaksi tambahan). Reset jejak selesai.
      */
     public function panggilUlangRiwayat(Antrian $antrian)
@@ -109,6 +127,9 @@ class KasirController extends Controller
         $counter = session('kasir_counter');
         if (! $counter) {
             return redirect()->route('kasir.pilih-counter');
+        }
+        if ($this->hasActiveKasir($counter)) {
+            return back()->with('error', 'Selesaikan dulu pasien yang sedang dilayani sebelum memanggil yang baru.');
         }
 
         $antrian->forceFill([
@@ -123,20 +144,25 @@ class KasirController extends Controller
     }
 
     /**
-     * Selesai. Tujuan OTOMATIS dari status pasien (tak perlu pilih manual):
-     *   - Tanpa resep         → selesai (pulang)
-     *   - Ada resep, blm clear → farmasi
-     *   - Resep sudah CLEAR    → selesai (bayar obat terakhir)
+     * Selesai → kasir MEMILIH status resep pasien:
+     *   non_resep         → selesai total (pulang).
+     *   racik | non_racik → diteruskan ke Farmasi (ujung alur untuk pasien ini).
      */
-    public function selesai(Antrian $antrian)
+    public function selesai(Request $request, Antrian $antrian)
     {
-        $antrian->selesaiKasir();
+        $status = $request->input('status_resep');
+        if (! in_array($status, [Antrian::RESEP_NON, Antrian::RESEP_RACIK, Antrian::RESEP_NON_RACIK], true)) {
+            return back()->with('error', 'Pilih status resep dulu.');
+        }
 
-        $msg = match ($antrian->tahap) {
-            Antrian::TAHAP_FARMASI => 'Antrian '.$antrian->no_antrian.' diteruskan ke Farmasi (ambil obat).',
-            default                => 'Antrian '.$antrian->no_antrian.' selesai.',
-        };
+        if ($status === Antrian::RESEP_NON) {
+            $antrian->selesaiKasir();
 
-        return back()->with('ok', $msg);
+            return back()->with('ok', 'Antrian '.$antrian->no_antrian.' selesai.');
+        }
+
+        $antrian->kirimKeFarmasi($status);
+
+        return back()->with('ok', 'Antrian '.$antrian->no_antrian.' ('.$antrian->statusLabel().') diteruskan ke Farmasi.');
     }
 }

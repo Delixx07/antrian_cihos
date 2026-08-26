@@ -19,11 +19,20 @@
     </source>
     <php>
         <env name="APP_ENV" value="testing"/>
+        <!-- APP_URL asli (.env) punya subpath "/antrian" (Apache alias) -
+             route() ikut membubuhkannya, tapi test HTTP client mencocokkan
+             path TANPA prefix itu, jadi semua request nyasar 404. -->
+        <env name="APP_URL" value="http://localhost"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
+        <!-- 'mysql', BUKAN 'sqlite' - Antrian/AntrianAccess/Banner/Video/dll
+             hardcode `$connection = 'mysql'`; config/database.php mengalihkan
+             koneksi BERNAMA 'mysql' itu ke SQLite in-memory saat APP_ENV=testing,
+             jadi 'default' harus tetap 'mysql' supaya keduanya nyambung ke
+             database yang SAMA (SQLite ":memory:" privat per-nama-koneksi). -->
+        <env name="DB_CONNECTION" value="mysql"/>
         <env name="DB_DATABASE" value=":memory:"/>
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>

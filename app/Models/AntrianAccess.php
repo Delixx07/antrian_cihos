@@ -14,7 +14,7 @@ class AntrianAccess extends Model
     /**
      * WAJIB ditetapkan eksplisit.
      *
-     * Tanpa ini model memakai koneksi DEFAULT saat itu — dan bila dalam satu
+     * Tanpa ini model memakai koneksi DEFAULT saat itu - dan bila dalam satu
      * request ada model lain yang sempat mengubah koneksi default, query ini
      * ikut nyasar ke database appointment ("Table
      * appointment_pasien_cihos.antrian_access doesn't exist"). Akibatnya
@@ -51,7 +51,7 @@ class AntrianAccess extends Model
     }
 
     /**
-     * Daftar hak akses (role) — sesuai form "Tambah User" antrian asli.
+     * Daftar hak akses (role) - sesuai form "Tambah User" antrian asli.
      * key = kode disimpan di DB, value = label tampilan.
      */
     public const ROLES = [
@@ -64,6 +64,7 @@ class AntrianAccess extends Model
         'kasir_administrasi'   => 'Kasir Administrasi',
         'kasir_farmasi'        => 'Kasir Farmasi',
         'spv'                  => 'SPV',
+        'registrasi'           => 'Registrasi',
     ];
 
     /** Role yang terikat ke seorang dokter (butuh paramedic_id). */

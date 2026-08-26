@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ $judul }} — Ciputra Hospital</title>
+    <title>{{ $judul }} - Ciputra Hospital</title>
     <link rel="icon" href="{{ asset('cihoslogo_biruijo.png') }}" type="image/png">
     <style>
         :root{
@@ -26,12 +26,12 @@
         body{font-family:'Segoe UI',system-ui,sans-serif;color:var(--ink);
             overflow:hidden;height:100vh;display:flex;flex-direction:column;
             background:#d1d5db url('{{ asset('login_bg.png') }}') center/cover fixed no-repeat;}
-        /* Overlay tipis saja — glass butuh latar yang masih terlihat di belakangnya. */
+        /* Overlay tipis saja - glass butuh latar yang masih terlihat di belakangnya. */
         body::before{content:"";position:fixed;inset:0;background:rgba(238,243,251,.26);z-index:-1;}
 
         /* ---------- HEADER: bar glass melayang (rounded, tidak full-bleed) ---------- */
         .hdwrap{flex-shrink:0;padding:1.2vh 1.4vw .2vh;}
-        .hd{background:linear-gradient(120deg,rgba(255,255,255,.62),rgba(255,255,255,.42));
+        .hd{position:relative;background:linear-gradient(120deg,rgba(255,255,255,.62),rgba(255,255,255,.42));
             -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
             border:1px solid var(--glass-brd);border-radius:var(--r);
             box-shadow:0 8px 28px rgba(15,30,46,.14),inset 0 1px 0 rgba(255,255,255,.55);
@@ -46,16 +46,31 @@
         .hd .b .crop{position:relative;overflow:hidden;flex-shrink:0;}
         .hd .b .crop img{position:absolute;height:auto;max-width:none;}
         /* aspect-ratio WAJIB sama dengan rasio area crop, karena offset `top`
-           dihitung relatif tinggi wadah — rasio meleset = artwork lain ikut masuk.
+           dihitung relatif tinggi wadah - rasio meleset = artwork lain ikut masuk.
            Kedua crop dipas ke batas tinta (bbox) masing-masing, dan tingginya
            disamakan agar ikon C tidak tampak lebih tinggi dari wordmark. */
         .hd .b .mark{height:7vh;min-height:50px;aspect-ratio:1.5510;}
         .hd .b .mark img{width:394.74%;left:-142.11%;top:-92.04%;}
         .hd .b .wmk{height:7vh;min-height:50px;aspect-ratio:3.5594;}
         .hd .b .wmk img{width:131.69%;left:-15.28%;top:-157.66%;}
+        /* Absolute + translate, BUKAN flex:1 - supaya benar-benar di tengah BAR,
+           bukan di tengah ruang sisa antara logo & jam (yang lebarnya beda). */
+        .hd .mid{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+            white-space:nowrap;font-size:2.2vh;font-weight:800;letter-spacing:.1em;
+            text-transform:uppercase;color:var(--navy);text-align:center;}
+        .hd .mid .sub{font-size:1.15vh;font-weight:600;letter-spacing:.03em;
+            text-transform:none;color:var(--muted);margin-top:.5vh;}
         .hd .r{text-align:right;}
         .hd .r .cl{font-size:3vh;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1;}
         .hd .r .dt{font-size:1.5vh;font-weight:600;color:var(--muted);}
+        /* Muncul kalau poll() gagal berturut-turut - layar tak crash, tapi
+           petugas perlu tahu data yang tampil mungkin sudah tak terbaru. */
+        .hd .r .offline{display:none;align-items:center;justify-content:flex-end;gap:.4rem;
+            margin-top:.4vh;font-size:1.05vh;font-weight:700;color:#dc2626;letter-spacing:.03em;}
+        .hd .r .offline.show{display:flex;}
+        .hd .r .offline .dot{width:.9vh;height:.9vh;border-radius:50%;background:#dc2626;flex-shrink:0;
+            animation:offlineBlink 1s infinite;}
+        @keyframes offlineBlink{50%{opacity:.25;}}
 
         /* ---------- LAYOUT ---------- */
         /* justify-content:center → sisa ruang dibagi rata atas & bawah, sehingga
@@ -75,16 +90,12 @@
         .media video,.media.banner img{position:absolute;inset:0;width:100%;height:100%;}
         .media.video{background:#04173a;}
         .media video{object-fit:cover;}
-        /* Rasio tiap banner tidak persis 16:9 (1.771 vs 1.791) — `cover` memangkas
+        /* Rasio tiap banner tidak persis 16:9 (1.771 vs 1.791) - `cover` memangkas
            <0.6% sehingga nol margin putih untuk rasio apa pun. */
         .media.banner{background:#fff;}
         .media.banner img{object-fit:cover;opacity:0;transition:opacity 1s;}
         .media.banner img.on{opacity:1;}
         .media .none{color:#5c6f92;font-size:1.8vh;font-weight:600;}
-        .dots{position:absolute;left:0;right:0;bottom:1.1vh;display:flex;justify-content:center;gap:.5rem;z-index:2;}
-        .dots i{width:.85vh;height:.85vh;border-radius:50%;background:rgba(255,255,255,.55);
-            box-shadow:0 1px 4px rgba(0,0,0,.4);transition:background .3s,transform .3s;}
-        .dots i.on{background:#fff;transform:scale(1.25);}
 
         /* ---------- NOW SERVING (kanan promosi, tinggi = media 16:9) ---------- */
         .now{border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;min-height:0;
@@ -121,8 +132,8 @@
         .qlist .hd2 .cnt{font-size:1.6vh;font-weight:800;color:var(--navy);background:var(--brand-pale);
             border:1px solid rgba(201,153,46,.20);border-radius:999px;padding:.35vh .9rem;white-space:nowrap;}
         .qlist .hd2 .cnt b{color:var(--brand);font-variant-numeric:tabular-nums;}
-        /* Kartu antrean berjajar — memanfaatkan lebar penuh layar. */
-        /* Tinggi kartu tetap & ringkas — cukup untuk nomor + tujuan. */
+        /* Kartu antrean berjajar - memanfaatkan lebar penuh layar. */
+        /* Tinggi kartu tetap & ringkas - cukup untuk nomor + tujuan. */
         .qlist .rows{display:grid;grid-template-columns:repeat(6,1fr);gap:1vw;
             padding:1.1vh 1.2vw 1.3vh;}
         .qc{background:var(--glass-strong);border:1px solid var(--glass-brd);border-radius:14px;
@@ -145,7 +156,7 @@
         .qc.empty .no,.qc.empty .to b{color:#a9b6cf;}
         /* BOOKING: pasien sudah punya jadwal tapi BELUM check-in. Ditampilkan
            samar & bergaris putus-putus supaya urutan antrian terlihat utuh
-           sejak awal — jadi saat ia check-in, ia tidak terkesan menyelip. */
+           sejak awal - jadi saat ia check-in, ia tidak terkesan menyelip. */
         .qc.booking{opacity:.5;border-style:dashed;background:rgba(255,255,255,.45);}
         .qc.booking .no{color:#6b7d9e;font-weight:700;}
         .qc.booking .to b{color:#7c8aa6;}
@@ -161,7 +172,7 @@
         @keyframes scroll{from{transform:translateX(0);}to{transform:translateX(-100%);}}
 
         /* Penanda audio diblokir browser (autoplay policy). Muncul hanya bila
-           pemutaran ditolak — petugas cukup klik layar sekali. */
+           pemutaran ditolak - petugas cukup klik layar sekali. */
         .alock{position:fixed;inset:0;z-index:99;display:none;
             align-items:center;justify-content:center;cursor:pointer;
             background:rgba(0,27,69,.55);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);}
@@ -182,28 +193,35 @@
         <header class="hd">
             <div class="b">
                 <div class="crop mark"><img src="{{ asset('cihoslogo_biruijo.png') }}" alt=""></div>
-                <div class="crop wmk"><img src="{{ asset('cihoslogo_biruijo.png') }}" alt="Ciputra Hospital Surabaya — Enhancing Life"></div>
+                <div class="crop wmk"><img src="{{ asset('cihoslogo_biruijo.png') }}" alt="Ciputra Hospital Surabaya - Enhancing Life"></div>
+            </div>
+            <div class="mid">
+                {{ $judul }}
+                @if (! empty($zoneDesc))
+                    <div class="sub">{{ $zoneDesc }}</div>
+                @endif
             </div>
             <div class="r">
                 <div class="cl" id="cl">--:--:--</div>
-                <div class="dt" id="dt">—</div>
+                <div class="dt" id="dt">-</div>
+                <div class="offline" id="offlineBadge"><span class="dot"></span>Koneksi terputus - data mungkin tak terbaru</div>
             </div>
         </header>
     </div>
 
     <main class="main">
         <div class="top">
-            {{-- Now Serving — KIRI --}}
+            {{-- Now Serving - KIRI --}}
             <div class="now" id="nowCard">
                 <div class="tag"><i class="pulse"></i><span>Now Serving</span></div>
                 <div class="idle-txt" id="idle">Waiting for call…</div>
                 <div class="num" id="num" style="display:none;">0000</div>
                 <div class="dest" id="dest" style="display:none;">
-                    <span>{{ $area === 'klinik' ? 'Room' : 'Counter' }}</span><b id="room">—</b>
+                    <span>{{ $area === 'klinik' ? 'Room' : 'Counter' }}</span><b id="room">-</b>
                 </div>
             </div>
 
-            {{-- Media promosi — KANAN, container WAJIB 16:9 --}}
+            {{-- Media promosi - KANAN, container WAJIB 16:9 --}}
             @if ($video)
                 <div class="media video"><video src="{{ $video->url() }}" autoplay muted loop playsinline></video></div>
             @elseif ($banners->count())
@@ -211,18 +229,13 @@
                     @foreach ($banners as $i => $b)
                         <img src="{{ $b->url() }}" class="{{ $i===0?'on':'' }}" alt="{{ $b->nama }}">
                     @endforeach
-                    @if ($banners->count() > 1)
-                        <div class="dots" id="dots">
-                            @foreach ($banners as $i => $b)<i class="{{ $i===0?'on':'' }}"></i>@endforeach
-                        </div>
-                    @endif
                 </div>
             @else
                 <div class="media"><div class="none">No active media</div></div>
             @endif
         </div>
 
-        {{-- Next in Queue — full width di bawah promosi --}}
+        {{-- Next in Queue - full width di bawah promosi --}}
         <div class="qlist">
             <div class="hd2">
                 <div class="t">Next in Queue</div>
@@ -233,23 +246,22 @@
                 @for ($i=0;$i<6;$i++)
                     <div class="qc empty">
                         <div class="pos">{{ $i+1 }}</div>
-                        <div class="no">—</div>
-                        <div class="to"><span>{{ $area === 'klinik' ? 'Room' : 'Counter' }}</span><b>—</b></div>
+                        <div class="no">-</div>
+                        <div class="to"><span>{{ $area === 'klinik' ? 'Room' : 'Counter' }}</span><b>-</b></div>
                     </div>
                 @endfor
             </div>
         </div>
     </main>
 
-    @php $welcomeEn = 'WELCOME TO CIPUTRA HOSPITAL SURABAYA'; @endphp
-    <footer class="mq"><div class="t">{{ $welcomeEn }} &nbsp;•&nbsp; {{ $welcomeEn }} &nbsp;•&nbsp; {{ $welcomeEn }}</div></footer>
+    <footer class="mq"><div class="t">{{ $runningText }} &nbsp;•&nbsp; {{ $runningText }} &nbsp;•&nbsp; {{ $runningText }}</div></footer>
 
     {{-- Muncul hanya bila browser memblokir audio (butuh 1x klik) --}}
     <div class="alock" id="audioLock" onclick="unlockAudio()">
         <div class="box">
             <div class="ic">🔇</div>
             <div class="t1">Klik layar untuk mengaktifkan suara</div>
-            <div class="t2">Browser memblokir suara otomatis.<br>Cukup klik sekali — pesan ini akan hilang.</div>
+            <div class="t2">Browser memblokir suara otomatis.<br>Cukup klik sekali - pesan ini akan hilang.</div>
         </div>
     </div>
 
@@ -265,13 +277,13 @@
             document.getElementById('dt').textContent=DAYS[d.getDay()]+', '+p(d.getDate())+' '+MONTHS[d.getMonth()]+' '+d.getFullYear();}
         setInterval(tick,1000);tick();
 
-        // Slideshow banner + sinkronisasi titik indikator.
+        // Slideshow banner - pindah sendiri, tanpa titik indikator.
         (function(){var imgs=document.querySelectorAll('#bannerBox img');if(imgs.length<2)return;
-            var dots=document.querySelectorAll('#dots i'),i=0;
+            var i=0;
             setInterval(function(){
-                imgs[i].classList.remove('on');if(dots[i])dots[i].classList.remove('on');
+                imgs[i].classList.remove('on');
                 i=(i+1)%imgs.length;
-                imgs[i].classList.add('on');if(dots[i])dots[i].classList.add('on');
+                imgs[i].classList.add('on');
             },6000);})();
 
         // Chime "ding-dong" ala bandara sebelum pengumuman suara.
@@ -281,8 +293,37 @@
             o.connect(g);g.connect(ctx.destination);var t=ctx.currentTime+i*0.18;g.gain.setValueAtTime(0.0001,t);
             g.gain.exponentialRampToValueAtTime(0.25,t+0.02);g.gain.exponentialRampToValueAtTime(0.0001,t+0.35);o.start(t);o.stop(t+0.36);});}catch(e){}}
 
+        /*
+         * BEL PEMBUKA & PENUTUP - dari public/bel.mp3 (sama seperti Client
+         * Display, display/client.blade.php). Berkas berisi dua blok bunyi:
+         *   blok 1 (0    – 4,0 dtk)  → bel PEMBUKA, sebelum pengumuman
+         *   blok 2 (5,45 dtk – habis)→ bel PENUTUP, sesudah pengumuman
+         */
+        var BEL_URL   = "{{ asset('bel.mp3') }}";
+        var BEL_OPEN  = { start: 0,    end: 4.0  };
+        var BEL_CLOSE = { start: 5.45, end: null };
+        var bell = new Audio(BEL_URL);
+        bell.preload = 'auto';
+        function playBell(seg, done){
+            var timer = null, finished = false;
+            var stop = function(){
+                if(finished) return;
+                finished = true;
+                if(timer){ clearTimeout(timer); timer = null; }
+                bell.removeEventListener('ended', stop);
+                try{ bell.pause(); }catch(e){}
+                done();
+            };
+            bell.addEventListener('ended', stop);
+            try{
+                bell.currentTime = seg.start;
+                if(seg.end != null){ timer = setTimeout(stop, (seg.end - seg.start) * 1000); }
+                bell.play().catch(function(){ stop(); });
+            }catch(e){ stop(); }
+        }
+
         // "FD005" → "F D 0 0 5" agar TTS mengeja jelas.
-        // "FD005" → "ef de nol nol lima" — angka & huruf dieja memakai lafal
+        // "FD005" → "ef de nol nol lima" - angka & huruf dieja memakai lafal
         // Indonesia supaya tidak terdengar seperti bahasa Inggris.
         var DIGIT_ID = {'0':'nol','1':'satu','2':'dua','3':'tiga','4':'empat',
                         '5':'lima','6':'enam','7':'tujuh','8':'delapan','9':'sembilan'};
@@ -301,7 +342,7 @@
         // huruf (mis. counter "A2") dieja per karakter.
         function destText(d){
             var s = String(d==null?'':d).trim();
-            if(!s || s==='—') return '';
+            if(!s || s==='-') return '';
             return /^\d+$/.test(s) ? s : spellNumber(s);
         }
         /*
@@ -309,7 +350,7 @@
          *
          * PENTING: suara Indonesia hanya terdengar alami bila perangkat layar
          * punya voice id-ID terpasang. Windows biasanya HANYA punya voice
-         * Inggris (David/Zira/Mark) — tanpa voice Indonesia, teks tetap dibaca
+         * Inggris (David/Zira/Mark) - tanpa voice Indonesia, teks tetap dibaca
          * tapi dengan aksen Inggris (terdengar aneh).
          * Pasang lewat: Settings → Time & Language → Language & region →
          * tambah "Indonesia" → Language options → Speech (Basic typing / TTS).
@@ -349,8 +390,8 @@
          * Pengumuman suara.
          *
          * UTAMA: audio dirender di SERVER (Piper TTS, Bahasa Indonesia) lalu
-         * diputar sebagai <audio>. Dengan begitu semua perangkat — Windows,
-         * Android, TV box — berbunyi sama persis tanpa perlu memasang voice.
+         * diputar sebagai <audio>. Dengan begitu semua perangkat - Windows,
+         * Android, TV box - berbunyi sama persis tanpa perlu memasang voice.
          *
          * CADANGAN: bila server belum punya Piper, pakai Web Speech API
          * browser (kualitas bergantung voice yang terpasang di perangkat).
@@ -384,16 +425,17 @@
             var el = document.getElementById('audioLock');
             if(el) el.classList.remove('on');
         }
-        function announce(no, dest, seq){
+        function announce(no, dest, seq, onDone){
             var qs = 'no='+encodeURIComponent(no||'')+
                      '&dest='+encodeURIComponent(dest||'')+
                      '&area='+encodeURIComponent(AREA);
+            var finish = onDone || function(){};
 
             // MODE PUSAT: cukup daftarkan ke antrean; speaker pusat yang
             // memutar. Layar ini tidak mengeluarkan suara sama sekali.
             if(SOUND_MODE === 'central'){
                 fetch(ENQUEUE_URL+'?'+qs+'&seq='+encodeURIComponent(seq||0),
-                      {headers:{'X-Requested-With':'XMLHttpRequest'}}).catch(function(){});
+                      {headers:{'X-Requested-With':'XMLHttpRequest'}}).catch(function(){}).finally(finish);
                 return;
             }
 
@@ -401,14 +443,16 @@
             fetch(SPEECH_URL+'?'+qs, {headers:{'X-Requested-With':'XMLHttpRequest'}})
                 .then(function(r){ return r.json(); })
                 .then(function(j){
-                    if(j && j.url){ playTwice(j.url, j.url_short || j.url); }
-                    else { announceBrowser(no, dest); }
+                    if(j && j.url){ playTwice(j.url, j.url_short || j.url, finish); }
+                    else { announceBrowser(no, dest).then(finish); }
                 })
-                .catch(function(){ announceBrowser(no, dest); });
+                .catch(function(){ announceBrowser(no, dest).then(finish); });
         }
         // Pengumuman diputar 2x ala bandara: versi LENGKAP dulu, lalu versi
-        // RINGKAS sebagai pengulangan, dipisah jeda ~1,2 detik.
-        function playTwice(url, urlShort){
+        // RINGKAS sebagai pengulangan, dipisah jeda ~1,2 detik. onDone dipanggil
+        // setelah pengulangan KEDUA selesai (dipakai utk memicu bel penutup).
+        function playTwice(url, urlShort, onDone){
+            var finish = onDone || function(){};
             try{
                 player.pause();
                 player.src = url;
@@ -416,7 +460,17 @@
                 var second = function(){
                     player.removeEventListener('ended', second);
                     setTimeout(function(){
-                        try{ player.src = urlShort; player.currentTime=0; player.play().catch(function(){}); }catch(e){}
+                        try{
+                            // Elemen audio BARU (bukan reuse `player`) - urlShort biasanya
+                            // SAMA persis dgn url (server belum kirim versi ringkas
+                            // terpisah), dan reuse elemen yg sama utk src identik bisa
+                            // bikin browser tak reset status "ended"-nya dgn benar,
+                            // sehingga event 'ended' terpicu prematur (bel penutup
+                            // nyelonong di tengah putaran kedua).
+                            var p2 = new Audio(urlShort);
+                            p2.addEventListener('ended', finish, {once:true});
+                            p2.play().catch(finish);
+                        }catch(e){ finish(); }
                     }, 1200);
                 };
                 player.addEventListener('ended', second);
@@ -428,11 +482,12 @@
                         showAudioBlocked();
                         console.warn('[antrian] Audio diblokir browser. Klik layar sekali untuk mengaktifkan suara.');
                     }
+                    finish();
                 });
             }catch(e){}
         }
         /*
-         * SUARA BROWSER (SpeechSynthesisUtterance) — meniru program lama
+         * SUARA BROWSER (SpeechSynthesisUtterance) - meniru program lama
          * registrasi.php:
          *   - kalimat dipecah jadi potongan: frasa, HURUF satu per satu,
          *     dan ANGKA berurutan DIGABUNG ("nol nol lima").
@@ -507,7 +562,7 @@
             ttsChain = ttsChain.then(function(){
                 try{ speechSynthesis.cancel(); }catch(e){}
                 var seq = [{t:'Nomor antrian', d:80}].concat(splitNomor(no));
-                if(dest && String(dest).trim() && String(dest).trim() !== '—'){
+                if(dest && String(dest).trim() && String(dest).trim() !== '-'){
                     seq.push({t:'silakan menuju '+DEST_WORD_ID, d:150});
                     // Ruang klinik: sebut 2 digit terakhir sbg bilangan utuh
                     // ("1859" → "lima puluh sembilan"). Selain itu dieja.
@@ -533,10 +588,62 @@
         setInterval(function(){
             if(('speechSynthesis' in window) && speechSynthesis.speaking && speechSynthesis.paused){ speechSynthesis.resume(); }
         }, 5000);
+        /*
+         * ANTREAN SUARA LOKAL - BUG YANG DIPERBAIKI: kalau 2 counter memanggil
+         * berdekatan, panggilan kedua dulu langsung memicu callSound() lagi
+         * walau urutan bel+suara panggilan pertama belum selesai, sehingga
+         * dua-duanya berbunyi bertumpuk. Sekarang diantre (mirip sayQueue di
+         * display/client.blade.php) - panggilan baru menunggu urutan yang
+         * sedang jalan benar-benar tuntas (sampai bel penutup) baru diputar.
+         */
+        var soundBusy = false;
+        var soundQueue = [];
         function callSound(no, dest, seq){
-            // Mode pusat: layar diam total — chime & suara dari speaker pusat.
+            // Mode pusat: layar diam total - chime & suara dari speaker pusat,
+            // antreannya sudah ditangani server (AnnouncementQueue).
             if(SOUND_MODE === 'central'){ announce(no, dest, seq); return; }
-            ding(); setTimeout(function(){ announce(no, dest, seq); }, 850);
+            if(soundBusy){ soundQueue.push({no:no, dest:dest, seq:seq}); return; }
+            playSoundNow(no, dest, seq);
+        }
+        function playSoundNow(no, dest, seq){
+            soundBusy = true;
+
+            // Mode pusat sudah ditangani di callSound() (fire-and-forget ke
+            // antrean server) - dari sini seterusnya pasti mode LOKAL.
+            //
+            // BUG: "bel bunyi lalu sunyi lama". Mesin suara default (Edge TTS)
+            // butuh INTERNET & mensintesis ulang tiap kalimat BARU (bisa
+            // beberapa detik) - sebelumnya fetch ke server baru dimulai
+            // SETELAH bel pembuka selesai, jadi jeda sintesis itu terasa
+            // sebagai keheningan panjang sebelum suara keluar. Sekarang fetch
+            // dimulai BERBARENGAN dengan bel pembuka (bukan menunggunya
+            // selesai dulu) - selama sintesisnya tak lebih lama dari durasi
+            // bel (~4 detik), waktu tunggunya "tersembunyi" di balik bel.
+            var qs = 'no='+encodeURIComponent(no||'')+'&dest='+encodeURIComponent(dest||'')+'&area='+encodeURIComponent(AREA);
+            var speechPromise = fetch(SPEECH_URL+'?'+qs, {headers:{'X-Requested-With':'XMLHttpRequest'}})
+                .then(function(r){ return r.json(); })
+                .catch(function(){ return null; });
+            var bellDonePromise = new Promise(function(resolve){ playBell(BEL_OPEN, resolve); });
+
+            // Urutan ala bandara: BEL PEMBUKA (+ fetch suara berbarengan) → pengumuman (2x) → BEL PENUTUP.
+            Promise.all([bellDonePromise, speechPromise]).then(function(res){
+                var j = res[1];
+                setTimeout(function(){
+                    var afterVoice = function(){
+                        setTimeout(function(){
+                            playBell(BEL_CLOSE, function(){
+                                soundBusy = false;
+                                if(soundQueue.length){
+                                    var next = soundQueue.shift();
+                                    playSoundNow(next.no, next.dest, next.seq);
+                                }
+                            });
+                        }, 900);
+                    };
+                    if(j && j.url){ playTwice(j.url, j.url_short || j.url, afterVoice); }
+                    else { announceBrowser(no, dest).then(afterVoice); }
+                }, 350);
+            });
         }
 
         var audioUnlocked=false;
@@ -546,6 +653,10 @@
             audioUnlocked=true;
             try{ ding._c = ding._c || new (window.AudioContext||window.webkitAudioContext)(); if(ding._c.state==='suspended') ding._c.resume(); }catch(e){}
             try{ if('speechSynthesis' in window){ var w=new SpeechSynthesisUtterance(' '); w.volume=0; speechSynthesis.speak(w); } }catch(e){}
+            try{
+                bell.muted = true;
+                bell.play().then(function(){ bell.pause(); bell.currentTime = 0; bell.muted = false; }).catch(function(){ bell.muted = false; });
+            }catch(e){}
             // Buka izin autoplay untuk <audio> Piper: putar 1 audio senyap.
             // Memakai WAV diam yang valid agar izin benar-benar terpakai.
             try{
@@ -567,13 +678,24 @@
          * Keduanya dipisah karena: saat halaman baru dibuka, panggilan yang
          * SEDANG berjalan tidak boleh langsung diteriakkan (itu riwayat, bukan
          * panggilan baru). Tapi sesudah itu, panggilan pertama setelah layar
-         * kosong HARUS berbunyi — dulu ikut terbungkam karena lastSeq di-reset
+         * kosong HARUS berbunyi - dulu ikut terbungkam karena lastSeq di-reset
          * ke null tiap kali tidak ada pasien.
          */
         var lastSeq=null, primed=false;
         function esc(s){return String(s==null?'':s);}
+
+        // Tandai layar "offline" kalau poll() gagal 2x BERTURUT-TURUT (~8 detik
+        // tanpa kontak) - bukan sekali gagal langsung, supaya blip jaringan
+        // sekejap tak bikin badge berkedip-kedip tiap poll.
+        var pollFails = 0;
+        function setOffline(bad){
+            pollFails = bad ? pollFails + 1 : 0;
+            document.getElementById('offlineBadge').classList.toggle('show', pollFails >= 2);
+        }
+
         function poll(){
             fetch(JSON_URL,{headers:{'X-Requested-With':'XMLHttpRequest'}}).then(r=>r.json()).then(function(j){
+                setOffline(false);
                 if(j.error) return;
 
                 // --- Now Serving ---
@@ -582,7 +704,7 @@
                 if(j.current){
                     idle.style.display='none';num.style.display='block';dest.style.display='inline-flex';
                     num.textContent=j.current.no||'0000';
-                    document.getElementById('room').textContent=j.current.tujuan?esc(j.current.tujuan):'—';
+                    document.getElementById('room').textContent=j.current.tujuan?esc(j.current.tujuan):'-';
                     var key=(j.current.no||'')+'|'+(j.current.seq||'');
                     if(key!==lastSeq){
                         var c=document.getElementById('nowCard');c.classList.remove('blink');void c.offsetWidth;c.classList.add('blink');
@@ -593,7 +715,7 @@
                     }
                 }else{
                     idle.style.display='block';num.style.display='none';dest.style.display='none';
-                    // JANGAN reset lastSeq ke null di sini — kalau direset,
+                    // JANGAN reset lastSeq ke null di sini - kalau direset,
                     // panggilan berikutnya dianggap "data pertama" dan bisu.
                     lastSeq='';
                 }
@@ -606,22 +728,22 @@
                 for(var i=0;i<cards.length;i++){var cd=cards[i],r=q[i];
                     var bk = !!(r && r.booking);
                     // "lead" (giliran berikutnya) hanya untuk pasien yang
-                    // sudah check-in — booking belum boleh dipanggil.
+                    // sudah check-in - booking belum boleh dipanggil.
                     cd.classList.toggle('lead', i===0 && !!r && !bk);
                     cd.classList.toggle('booking', bk);
                     if(r){cd.classList.remove('empty');
                         cd.querySelector('.no').textContent=esc(r.no);
-                        cd.querySelector('.to b').textContent=r.tujuan?esc(r.tujuan):'—';}
+                        cd.querySelector('.to b').textContent=r.tujuan?esc(r.tujuan):'-';}
                     else{cd.classList.add('empty');
-                        cd.querySelector('.no').textContent='—';
-                        cd.querySelector('.to b').textContent='—';}}
+                        cd.querySelector('.no').textContent='-';
+                        cd.querySelector('.to b').textContent='-';}}
 
                 // --- Total menunggu ---
                 var chip=document.getElementById('cntChip'),total=j.waiting_total;
                 if(typeof total==='number'&&total>0){chip.style.display='block';
                     document.getElementById('cntNum').textContent=total;}
                 else{chip.style.display='none';}
-            }).catch(function(){});
+            }).catch(function(){ setOffline(true); });
         }
         poll();setInterval(poll,4000);
     </script>

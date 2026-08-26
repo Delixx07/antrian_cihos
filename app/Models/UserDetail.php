@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * READ-ONLY. Direktori user RS (dbuser.user_detail) — sumber login.
+ * READ-ONLY. Direktori user RS (dbuser.user_detail) - sumber login.
  * Password disimpan sebagai SHA1 (skema RS). Jangan menulis ke tabel ini.
  */
 class UserDetail extends Model

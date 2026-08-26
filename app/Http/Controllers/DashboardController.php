@@ -4,15 +4,24 @@ namespace App\Http\Controllers;
 
 use App\Models\Antrian;
 use App\Models\Doctor;
+use App\Services\AntrianSync;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request, AntrianSync $sync)
     {
-        // Dokter (role Klinik) tak butuh dashboard kartu — halaman utamanya adalah
+        // Dashboard cuma BACA tabel antrian lokal - tanpa ini, kartu bisa
+        // tampil 0 walau pasien sudah check-in di appointment, kalau kebetulan
+        // belum ada yang buka halaman Klinik (satu-satunya trigger manual) dan
+        // scheduled task antrian:sync (tiap 1 menit) belum sempat jalan.
+        // Murah & di-throttle 3 detik (lihat AntrianSync::pullThrottled) -
+        // aman dipanggil di tiap load Dashboard.
+        $sync->pullThrottled();
+
+        // Dokter (role Klinik) tak butuh dashboard kartu - halaman utamanya adalah
         // ANTRIAN miliknya. Arahkan langsung ke sana.
         if (session('role') === \App\Models\AntrianAccess::ROLE_KLINIK) {
             return redirect()->route('queue.index');
@@ -28,6 +37,18 @@ class DashboardController extends Controller
             return redirect()->route(session('kasir_counter') ? 'kasir.beranda' : 'kasir.pilih-counter');
         }
 
+        // SPV → monitor antrian per klinik. Kalau belum pernah pilih klinik,
+        // beranda() sendiri yang menampilkan prompt "Pilih Klinik" (modal),
+        // bukan redirect ke halaman terpisah.
+        if (session('role') === 'spv') {
+            return redirect()->route('spv.beranda');
+        }
+
+        // Registrasi → beranda counter registrasi (panggil tiket RG dari kiosk).
+        if (session('role') === 'registrasi') {
+            return redirect()->route(session('registrasi_counter') ? 'registrasi.beranda' : 'registrasi.pilih-counter');
+        }
+
         // Dokter aktif (dari mirror appointment, read-only). Aman bila DB mati.
         $activeDoctors = rescue(
             fn () => Doctor::where('is_available', 1)->orderBy('paramedic_name')->limit(30)->get(),
@@ -36,7 +57,7 @@ class DashboardController extends Controller
         );
 
         // Kartu antrian: dihitung dari tabel antrian lokal. Pasien BOOKING
-        // (belum check-in) tidak ikut dihitung — lihat scope nyata().
+        // (belum check-in) tidak ikut dihitung - lihat scope nyata().
         // Dibungkus rescue() agar dashboard tetap tampil bila DB bermasalah.
         $counts = rescue(fn () => $this->queueCounts(), [
             'total' => 0, 'klinik' => 0, 'kasir' => 0, 'farmasi' => 0,
@@ -64,7 +85,7 @@ class DashboardController extends Controller
     /**
      * Jumlah HARI INI: total pasien + yang masih menunggu per tahap.
      *
-     * Selalu kembalikan KEEMPAT kunci sekaligus (jangan dibangun bertahap) —
+     * Selalu kembalikan KEEMPAT kunci sekaligus (jangan dibangun bertahap) -
      * pemanggilnya membungkus ini dengan rescue() yang bersifat semua-atau-
      * tidak sama sekali, jadi kunci yang hilang akan jadi error di view.
      */
@@ -84,7 +105,7 @@ class DashboardController extends Controller
     }
 
     /**
-     * Grafik 10 hari terakhir — jumlah pasien nyata per tanggal.
+     * Grafik 10 hari terakhir - jumlah pasien nyata per tanggal.
      *
      * Satu query yang di-groupBy, lalu dipetakan ke deret tanggal lengkap
      * supaya hari tanpa pasien tetap muncul sebagai 0 (bukan bolong).
@@ -104,7 +125,7 @@ class DashboardController extends Controller
             ->all();
     }
 
-    /** Deret 10 hari terakhir bernilai 0 — dasar grafik & fallback bila DB mati. */
+    /** Deret 10 hari terakhir bernilai 0 - dasar grafik & fallback bila DB mati. */
     private function emptyTrend(): array
     {
         $out = [];

@@ -9,11 +9,11 @@
 <div class="cp" data-uid="{{ $uid }}">
     <label class="cp-mode">
         <input type="radio" name="clinic_mode" value="all" {{ $isPick ? '' : 'checked' }} onchange="cpToggle(this)">
-        <span><b>Semua Klinik</b> — tampil di semua layar tunggu</span>
+        <span><b>Semua Klinik</b> - tampil di semua layar tunggu</span>
     </label>
     <label class="cp-mode">
         <input type="radio" name="clinic_mode" value="pick" {{ $isPick ? 'checked' : '' }} onchange="cpToggle(this)">
-        <span><b>Klinik Tertentu</b> — pilih klinik di bawah</span>
+        <span><b>Klinik Tertentu</b> - pilih klinik di bawah</span>
     </label>
 
     <div class="cp-list {{ $isPick ? '' : 'off' }}">

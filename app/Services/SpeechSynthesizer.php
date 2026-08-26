@@ -25,6 +25,16 @@ class SpeechSynthesizer
     private const MAX_AGE = 2592000;
 
     /**
+     * Batas waktu tunggu proses render (detik). Tanpa batas ini, proc_close()
+     * menunggu proses selesai SEBERAPA PUN lama - kalau koneksi ke server
+     * Edge TTS macet/lambat sesaat, request PHP ikut menggantung tanpa batas,
+     * membuat jeda antara bel & suara terasa sangat lama. Begitu lewat batas
+     * ini, proses dipaksa berhenti dan pemanggil otomatis jatuh ke suara
+     * Web Speech API browser (lihat render()/available()).
+     */
+    private const RENDER_TIMEOUT_SECONDS = 8.0;
+
+    /**
      * Kembalikan URL audio untuk sebuah teks, merender bila belum ada.
      * Null bila Piper tidak tersedia / gagal render (pemanggil harus punya
      * jalur cadangan, mis. Web Speech API di browser).
@@ -117,7 +127,7 @@ class SpeechSynthesizer
     }
 
     /**
-     * Edge TTS (Microsoft) — voice Indonesia neural, gratis tanpa API key.
+     * Edge TTS (Microsoft) - voice Indonesia neural, gratis tanpa API key.
      * Perlu koneksi internet saat render; hasilnya di-cache.
      */
     private function renderEdge(string $text, string $path): bool
@@ -147,25 +157,19 @@ class SpeechSynthesizer
 
         $cmd = escapeshellarg(config('tts.python')).' '.escapeshellarg($script);
 
-        $desc = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
-        $proc = @proc_open($cmd, $desc, $pipes);
-        if (! is_resource($proc)) {
-            Log::warning('TTS: gagal menjalankan python untuk Edge TTS');
+        [$code, $out, $timedOut] = $this->runWithTimeout($cmd, $payload);
+
+        if ($timedOut) {
+            Log::warning('TTS: render Edge timeout ('.self::RENDER_TIMEOUT_SECONDS.'s) - proses dipaksa berhenti');
+            @unlink($path);
 
             return false;
         }
-        fwrite($pipes[0], $payload);
-        fclose($pipes[0]);
-        $out = [stream_get_contents($pipes[1])];
-        fclose($pipes[1]);
-        $out[] = stream_get_contents($pipes[2]);
-        fclose($pipes[2]);
-        $code = proc_close($proc);
 
         if ($code !== 0 || ! is_file($path) || filesize($path) === 0) {
             Log::warning('TTS: render Edge gagal', [
                 'exit' => $code,
-                'out'  => mb_substr(implode("\n", (array) $out), -900),
+                'out'  => mb_substr($out, -900),
             ]);
             @unlink($path);
 
@@ -173,6 +177,61 @@ class SpeechSynthesizer
         }
 
         return true;
+    }
+
+    /**
+     * Jalankan proses dgn input STDIN, dibatasi waktu - TANPA ini,
+     * stream_get_contents()/proc_close() menunggu proses selesai seberapa pun
+     * lama (lihat catatan RENDER_TIMEOUT_SECONDS). Poll status proses secara
+     * berkala; begitu lewat batas waktu, proses dipaksa berhenti.
+     *
+     * @return array{0: int, 1: string, 2: bool} [exit_code, stdout+stderr, timed_out]
+     */
+    private function runWithTimeout(string $cmd, string $stdin): array
+    {
+        $desc = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+
+        // bypass_shell: PENTING di Windows - tanpa ini proc_open menjalankan
+        // command lewat cmd.exe, dan proc_terminate() cuma membunuh cmd.exe-
+        // nya (proses python/piper ASLI di baliknya tetap jalan, tidak
+        // benar-benar terpotong).
+        $proc = @proc_open($cmd, $desc, $pipes, null, null, ['bypass_shell' => true]);
+        if (! is_resource($proc)) {
+            return [-1, 'gagal menjalankan proses', false];
+        }
+
+        fwrite($pipes[0], $stdin);
+        fclose($pipes[0]);
+
+        // JANGAN baca pipe stdout/stderr di sini - stream_set_blocking(false)
+        // pada pipe proc_open TIDAK berlaku andal di Windows (batasan PHP di
+        // Windows), sehingga stream_get_contents() tetap memblokir sampai
+        // proses selesai dan meniadakan polling batas waktu di bawah. Cukup
+        // poll proc_get_status() saja (tak menyentuh pipe), baca isinya
+        // SETELAH loop selesai/proses dihentikan.
+        $deadline = microtime(true) + self::RENDER_TIMEOUT_SECONDS;
+        $timedOut = false;
+
+        while (true) {
+            $status = proc_get_status($proc);
+            if (! $status['running']) {
+                break;
+            }
+            if (microtime(true) >= $deadline) {
+                $timedOut = true;
+                proc_terminate($proc, 9);
+                break;
+            }
+            usleep(50000); // 50ms
+        }
+
+        $out  = stream_get_contents($pipes[1]);
+        $out .= stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $code = proc_close($proc);
+
+        return [$timedOut ? -1 : $code, $out, $timedOut];
     }
 
     /**
@@ -234,25 +293,17 @@ PY;
             escapeshellarg((string) config('tts.length_scale'))
         );
 
-        $desc = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
-        $proc = @proc_open($cmd, $desc, $pipes);
+        [$code, $out, $timedOut] = $this->runWithTimeout($cmd, $text);
 
-        if (! is_resource($proc)) {
-            Log::warning('TTS: gagal menjalankan Piper', ['cmd' => $cmd]);
+        if ($timedOut) {
+            Log::warning('TTS: render Piper timeout ('.self::RENDER_TIMEOUT_SECONDS.'s) - proses dipaksa berhenti');
+            @unlink($path);
 
             return false;
         }
 
-        fwrite($pipes[0], $text);
-        fclose($pipes[0]);
-        stream_get_contents($pipes[1]);
-        fclose($pipes[1]);
-        $err = stream_get_contents($pipes[2]);
-        fclose($pipes[2]);
-        $code = proc_close($proc);
-
         if ($code !== 0 || ! is_file($path) || filesize($path) === 0) {
-            Log::warning('TTS: render gagal', ['exit' => $code, 'stderr' => mb_substr($err, 0, 500)]);
+            Log::warning('TTS: render gagal', ['exit' => $code, 'stderr' => mb_substr($out, 0, 500)]);
             @unlink($path);
 
             return false;
@@ -266,7 +317,7 @@ PY;
     /** Hapus berkas cache lama agar folder tidak membengkak. */
     private function prune(): void
     {
-        // Cukup sesekali saja — 1 dari 50 render.
+        // Cukup sesekali saja - 1 dari 50 render.
         if (random_int(1, 50) !== 1) {
             return;
         }

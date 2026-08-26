@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\DB;
  * Impor user dari direktori RS (dbuser.user_detail) menjadi HAK AKSES aplikasi
  * antrian (tabel antrian_access), dipetakan otomatis berdasarkan departemen.
  *
- * Password TIDAK disalin — saat login, password tetap diverifikasi ke dbuser
+ * Password TIDAK disalin - saat login, password tetap diverifikasi ke dbuser
  * (lihat AuthController). Tabel antrian_access hanya menyimpan IZIN & peran.
  *
  *   php artisan antrian:import-users --dry-run   # lihat dulu, tanpa menyimpan
@@ -51,7 +51,7 @@ class ImportUsers extends Command
         $dry = (bool) $this->option('dry-run');
         $all = (bool) $this->option('all');
 
-        $this->info($dry ? 'MODE UJI COBA — tidak ada data yang disimpan.' : 'Mengimpor user…');
+        $this->info($dry ? 'MODE UJI COBA - tidak ada data yang disimpan.' : 'Mengimpor user…');
 
         // Cocokkan dokter: username dbuser = paramedic_code di master.doctors.
         $doctors = DB::connection('master')->table('doctors')
@@ -96,7 +96,7 @@ class ImportUsers extends Command
             $existing = AntrianAccess::where('username', $username)->first();
 
             // JANGAN timpa akun yang sudah diatur manual (mis. admin, akun mesin)
-            // — hanya lengkapi data yang masih kosong.
+            // - hanya lengkapi data yang masih kosong.
             if ($existing) {
                 $existing->fill(array_filter([
                     'name'           => $existing->name ?: $u->name,

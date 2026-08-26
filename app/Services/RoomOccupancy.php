@@ -70,7 +70,7 @@ class RoomOccupancy
 
     /**
      * Lepas ruang (dipanggil saat logout). Hanya mengosongkan penanda,
-     * room_code dibiarkan (histori) — occupancy ditentukan room_occupied_at.
+     * room_code dibiarkan (histori) - occupancy ditentukan room_occupied_at.
      */
     public function release(AntrianAccess $access): void
     {

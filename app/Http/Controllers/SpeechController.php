@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Antrian;
+use App\Models\KioskRegistration;
 use App\Services\AnnouncementQueue;
 use App\Services\SpeechSynthesizer;
 use Illuminate\Http\Request;
@@ -24,7 +25,7 @@ class SpeechController extends Controller
         $data = $request->validate([
             'no'   => ['required', 'string', 'max:20'],
             'dest' => ['nullable', 'string', 'max:20'],
-            'area' => ['nullable', 'string', 'in:klinik,kasir,farmasi'],
+            'area' => ['nullable', 'string', 'in:klinik,kasir,farmasi,registrasi'],
         ]);
 
         $text = $this->sentence(
@@ -46,7 +47,7 @@ class SpeechController extends Controller
         $data = $request->validate([
             'no'   => ['required', 'string', 'max:20'],
             'dest' => ['nullable', 'string', 'max:20'],
-            'area' => ['nullable', 'string', 'in:klinik,kasir,farmasi'],
+            'area' => ['nullable', 'string', 'in:klinik,kasir,farmasi,registrasi'],
             'seq'  => ['nullable', 'integer'],
         ]);
 
@@ -105,20 +106,24 @@ class SpeechController extends Controller
      * Ini membuat speaker pusat mandiri: suara tetap keluar walaupun layar
      * area tersebut TIDAK sedang dibuka di PC mana pun. Duplikat dicegah oleh
      * kunci area|nomor|panggil_count di AnnouncementQueue, sehingga panggilan
-     * yang sama tidak diumumkan dua kali — tapi RECALL (panggil_count naik)
+     * yang sama tidak diumumkan dua kali - tapi RECALL (panggil_count naik)
      * tetap terdeteksi sebagai panggilan baru.
      */
     private function scanCalls(AnnouncementQueue $queue): void
     {
         // Pemindaian PERTAMA setelah speaker dinyalakan hanya mencatat, tidak
-        // mengumumkan — supaya panggilan lama tidak diputar ulang.
+        // mengumumkan - supaya panggilan lama tidak diputar ulang.
         $first = ! \Illuminate\Support\Facades\Cache::get('ann:scan_started', false);
         \Illuminate\Support\Facades\Cache::put('ann:scan_started', true, 600);
 
+        // klinik & kasir: pasien benar-benar berada di tahap itu, jadi query
+        // via kolom `tahap` valid. FARMASI beda - pasien ber-resep TETAP di
+        // tahap kasir sepanjang alur (lihat Antrian::selesaiFarmasi()), jadi
+        // filter lewat status_resep, bukan tahap (sama seperti
+        // DisplayController::areaQuery() untuk area farmasi).
         $areas = [
-            'klinik'  => Antrian::TAHAP_KLINIK,
-            'kasir'   => Antrian::TAHAP_KASIR,
-            'farmasi' => Antrian::TAHAP_FARMASI,
+            'klinik' => Antrian::TAHAP_KLINIK,
+            'kasir'  => Antrian::TAHAP_KASIR,
         ];
 
         foreach ($areas as $area => $tahap) {
@@ -126,35 +131,55 @@ class SpeechController extends Controller
                 ->where('tahap', $tahap)
                 ->whereNotNull("{$tahap}_panggil_at")
                 ->whereNull("{$tahap}_selesai_at")
-                // Hanya panggilan beberapa menit terakhir — jangan mengumumkan
-                // ulang panggilan lama saat speaker baru dibuka.
                 ->where("{$tahap}_panggil_at", '>=', now()->subMinutes(3))
                 ->orderBy("{$tahap}_panggil_at")
                 ->limit(20)
                 ->get(['no_antrian', 'counter', 'room_code', 'panggil_count']);
 
-            foreach ($rows as $r) {
-                $seq = (int) $r->panggil_count;
+            $this->announceRows($queue, $rows, $area, $first,
+                fn ($r) => $area === 'klinik' ? $r->room_code : $r->counter);
+        }
 
-                if ($queue->seen($r->no_antrian, $area, $seq)) {
-                    continue;   // sudah pernah diumumkan/dicatat
-                }
+        $farmasiRows = Antrian::today()
+            ->whereIn('status_resep', [Antrian::RESEP_RACIK, Antrian::RESEP_NON_RACIK])
+            ->whereNotNull('farmasi_panggil_at')->whereNull('farmasi_selesai_at')
+            ->where('farmasi_panggil_at', '>=', now()->subMinutes(3))
+            ->orderBy('farmasi_panggil_at')->limit(20)
+            ->get(['no_antrian', 'counter', 'panggil_count']);
+        $this->announceRows($queue, $farmasiRows, 'farmasi', $first, fn ($r) => $r->counter);
 
-                $dest = trim((string) ($tahap === Antrian::TAHAP_KLINIK ? $r->room_code : $r->counter));
-                $dest = preg_replace('/\s*\([^)]*\)\s*/', ' ', $dest);
-                $dest = trim(preg_replace('/^(counter|loket|ruang|room)\s*/i', '', $dest));
+        // REGISTRASI: data ada di KioskRegistration (tabel & koneksi terpisah),
+        // bukan tabel `antrian` - lihat DisplayController::json() cabang registrasi.
+        $regRows = KioskRegistration::whereDate('tanggal', today())
+            ->whereNotNull('panggil_at')->whereNull('selesai_at')
+            ->where('panggil_at', '>=', now()->subMinutes(3))
+            ->orderBy('panggil_at')->limit(20)
+            ->get(['rg_no as no_antrian', 'counter', 'panggil_count']);
+        $this->announceRows($queue, $regRows, 'registrasi', $first, fn ($r) => $r->counter);
+    }
 
-                // Saat speaker BARU dinyalakan, panggilan yang sudah berjalan
-                // hanya dicatat (tidak diumumkan) agar tidak memutar riwayat.
-                if ($first) {
-                    $queue->markSeen($r->no_antrian, $area, $seq);
+    /** Umumkan (atau catat, bila $first) satu batch baris panggilan area tertentu. */
+    private function announceRows(AnnouncementQueue $queue, $rows, string $area, bool $first, \Closure $destOf): void
+    {
+        foreach ($rows as $r) {
+            $seq = (int) $r->panggil_count;
 
-                    continue;
-                }
+            if ($queue->seen($r->no_antrian, $area, $seq)) {
+                continue;   // sudah pernah diumumkan/dicatat
+            }
 
-                if ($queue->push($r->no_antrian, $dest !== '' ? $dest : null, $area, $seq)) {
-                    $queue->markSeen($r->no_antrian, $area, $seq);
-                }
+            $dest = $this->cleanDest((string) $destOf($r));
+
+            // Saat speaker BARU dinyalakan, panggilan yang sudah berjalan
+            // hanya dicatat (tidak diumumkan) agar tidak memutar riwayat.
+            if ($first) {
+                $queue->markSeen($r->no_antrian, $area, $seq);
+
+                continue;
+            }
+
+            if ($queue->push($r->no_antrian, $dest !== '' ? $dest : null, $area, $seq)) {
+                $queue->markSeen($r->no_antrian, $area, $seq);
             }
         }
     }
@@ -168,7 +193,7 @@ class SpeechController extends Controller
 
         $text = 'Nomor antrian, '.$this->spell($no);
 
-        if ($dest !== '' && $dest !== '—') {
+        if ($dest !== '' && $dest !== '-') {
             $said = $area === 'klinik' ? $this->roomSpoken($dest) : $this->spell($dest);
             if ($said !== '') {
                 $text .= ', silakan menuju '.$word.', '.$said;
@@ -235,18 +260,18 @@ class SpeechController extends Controller
     private function spell(string $s): string
     {
         $out    = [];
-        $digits = [];
+        $digits = '';
 
         $flush = function () use (&$out, &$digits) {
-            if ($digits) {
-                $out[]  = implode(', ', $digits);
-                $digits = [];
+            if ($digits !== '') {
+                $out[]  = $this->digitsSpoken($digits);
+                $digits = '';
             }
         };
 
         foreach (str_split(strtoupper(trim($s))) as $ch) {
             if (isset(self::DIGITS[$ch])) {
-                $digits[] = self::DIGITS[$ch];
+                $digits .= $ch;
             } elseif (str_contains(self::LETTERS, $ch)) {
                 $flush();
                 $out[] = $ch.'.,';
@@ -255,5 +280,19 @@ class SpeechController extends Controller
         $flush();
 
         return trim(implode(' ', $out));
+    }
+
+    /**
+     * Sebutkan RUN angka pada nomor antrian (mis. "010" dari "RG010")
+     * digit-demi-digit dengan jeda jelas antar tiap digit - supaya terdengar
+     * tegas & tidak ambigu (mis. "F, D, 0, 0, 1" - bukan "FD, nol sepuluh"
+     * yang terdengar seperti satu bilangan).
+     *
+     *   "001" → "nol, nol, satu"
+     *   "010" → "nol, satu, nol"
+     */
+    private function digitsSpoken(string $digits): string
+    {
+        return implode(', ', array_map(fn ($ch) => self::DIGITS[$ch], str_split($digits)));
     }
 }

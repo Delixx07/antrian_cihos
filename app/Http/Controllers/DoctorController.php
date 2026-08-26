@@ -6,6 +6,7 @@ use App\Models\Doctor;
 use App\Models\DoctorPhoto;
 use App\Models\UserDetail;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class DoctorController extends Controller
 {
@@ -22,8 +23,12 @@ class DoctorController extends Controller
             ->orderBy('paramedic_name')
             ->get();
 
-        $photos = DoctorPhoto::whereIn('paramedic_id', $doctors->pluck('paramedic_id'))
-            ->get()->keyBy('paramedic_id');
+        // URL foto EFEKTIF per dokter: upload lewat app kalau ada, else fallback
+        // ke public/img-dokter (foto lama, dicocokkan by nama) - lihat
+        // DoctorPhoto::urlFor().
+        $photos = $doctors->mapWithKeys(fn ($d) => [
+            $d->paramedic_id => DoctorPhoto::urlFor($d->paramedic_id, $d->paramedic_name),
+        ]);
 
         return view('doctors.index', ['doctors' => $doctors, 'photos' => $photos, 'q' => $q]);
     }
@@ -49,15 +54,19 @@ class DoctorController extends Controller
             return back()->withErrors(['cropped' => 'Gambar tidak valid atau terlalu besar.']);
         }
 
-        // NIK dari direktori RS (dbuser) via kode dokter; fallback ke kode dokter.
+        // NIK dari direktori RS (dbuser) via kode dokter - tetap dicatat di
+        // kolom `nik` sbg referensi, TAPI nama file sekarang pakai nama dokter
+        // (sama gayanya dgn foto lama di public/img-dokter), bukan NIK lagi.
         $nik = null;
         if ($doctor->paramedic_code) {
             $ud = rescue(fn () => UserDetail::where('user', $doctor->paramedic_code)->first(), null, false);
             $nik = $ud?->NIK;
         }
-        $basename = $nik ?: ($doctor->paramedic_code ?: ('DR'.$doctor->paramedic_id));
+        $basename = $this->sanitizeFilename($doctor->paramedic_name) ?: ($doctor->paramedic_code ?: ('DR'.$doctor->paramedic_id));
 
-        $dir = public_path('doctor-photos');
+        // Foto upload disimpan LANGSUNG di public/img-dokter, satu folder yang
+        // sama dengan foto lama - nama file = nama dokter (sama gayanya).
+        $dir = public_path('img-dokter');
         if (! is_dir($dir)) {
             @mkdir($dir, 0775, true);
         }
@@ -77,6 +86,19 @@ class DoctorController extends Controller
             ['nik' => $nik, 'filename' => $filename],
         );
 
+        // Index nama file img-dokter (dipakai fallback pencocokan) jadi basi begitu
+        // ada file baru masuk folder ini - refresh biar dokter LAIN yang belum
+        // pernah upload tetap dapat pencocokan yang akurat.
+        Cache::forget('doctor_photos:img_dokter_index');
+
         return redirect()->route('doctors.index')->with('ok', 'Foto dokter berhasil disimpan.');
+    }
+
+    /** Buang karakter yang dilarang di nama file Windows dari nama dokter. */
+    private function sanitizeFilename(string $name): string
+    {
+        $clean = preg_replace('/[<>:"\/\\\\|?*\x00-\x1F]/', '', $name) ?? $name;
+
+        return trim($clean, " .");
     }
 }

@@ -4,8 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\Antrian;
 use App\Models\Banner;
+use App\Models\KioskRegistration;
+use App\Models\Setting;
 use App\Models\Video;
+use App\Models\Zone;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Layar tunggu / kiosk (PUBLIK, tanpa login) untuk TV ruang tunggu. Menampilkan
@@ -15,13 +19,17 @@ use Illuminate\Http\Request;
  */
 class DisplayController extends Controller
 {
-    private const RUNNING_TEXT = 'SELAMAT DATANG DI CIPUTRA HOSPITAL SURABAYA';
+    /** Dipakai kalau admin belum pernah mengisi teks berjalan sendiri (lihat Setting). */
+    public const RUNNING_TEXT_DEFAULT = 'WELCOME TO CIPUTRA HOSPITAL SURABAYA';
 
     /** Area valid → [judul layar, kolom timestamp panggil]. */
     private const AREAS = [
-        'klinik'  => ['judul' => 'ANTRIAN KLINIK',  'tahap' => Antrian::TAHAP_KLINIK],
-        'kasir'   => ['judul' => 'ANTRIAN KASIR',   'tahap' => Antrian::TAHAP_KASIR],
-        'farmasi' => ['judul' => 'ANTRIAN FARMASI', 'tahap' => Antrian::TAHAP_FARMASI],
+        'klinik'     => ['judul' => 'CLINIC QUEUE',       'tahap' => Antrian::TAHAP_KLINIK],
+        'kasir'      => ['judul' => 'CASHIER QUEUE',      'tahap' => Antrian::TAHAP_KASIR],
+        'farmasi'    => ['judul' => 'PHARMACY QUEUE',     'tahap' => Antrian::TAHAP_FARMASI],
+        // 'tahap' di sini cuma placeholder (tak dipakai query) - data registrasi
+        // datang dari KioskRegistration, lihat cabang khusus di json().
+        'registrasi' => ['judul' => 'REGISTRATION QUEUE', 'tahap' => 'registrasi'],
     ];
 
     /** Halaman layar tunggu (fullscreen) untuk sebuah area. */
@@ -32,44 +40,64 @@ class DisplayController extends Controller
         // Filter media per klinik/poli (opsional via ?clinic=SU-XXX). Media tanpa
         // target klinik tampil di semua; yang bertarget hanya di klinik itu.
         $clinic = $request->query('clinic');
-        // Filter panggilan per RUANGAN (opsional via ?room=1101 atau ?room=1102,1103).
-        $room = $request->query('room');
-        $rooms = $this->roomList($room);
+        // Filter panggilan per RUANGAN (opsional via ?room=1101 atau ?room=1102,1103),
+        // ATAU per ZONA (opsional via ?floor=11 - "Main Display" zona dari menu,
+        // mencakup SEMUA ruang di zona itu, lihat display/menu.blade.php openZone()).
+        $room  = $request->query('room');
+        $floor = $request->query('floor');
+        $rooms = $this->roomList($room) ?: $this->zoneRooms($floor);
 
-        // Bangun query string untuk jsonUrl (klinik + room).
-        $qs = array_filter(['clinic' => $clinic, 'room' => $room]);
+        // Bangun query string untuk jsonUrl (klinik + room/floor).
+        $qs = array_filter(['clinic' => $clinic, 'room' => $room, 'floor' => $room ? null : $floor]);
         $jsonUrl = route('display.json', $area).($qs ? '?'.http_build_query($qs) : '');
+        $runningText = Setting::get('running_text', self::RUNNING_TEXT_DEFAULT);
+
+        // Judul + keterangan zona (mis. "Dental, Women & Children clinic") - cuma
+        // untuk layar Klinik. Mode RUANG (?room=) → judul sebut ruangnya persis;
+        // mode ZONA (?floor=) → judul sebut nama zonanya, tanpa daftar semua ruang.
+        $judul    = $meta['judul'];
+        $zoneDesc = null;
+        if ($area === 'klinik' && $room && $rooms) {
+            $judul    = 'ROOM '.implode(' - ', $rooms);
+            $zoneDesc = optional(Zone::allCached()->get(substr($rooms[0], 0, 2)))->name;
+        } elseif ($area === 'klinik' && ! $room && $floor && ($z = Zone::allCached()->get($floor))) {
+            $judul    = 'ZONE '.$floor;
+            $zoneDesc = $z->name;
+        }
+
+        // Farmasi punya tata letak SENDIRI (queue racik/non-racik terpisah +
+        // kartu "sedang diproses") - bukan template glass klinik/kasir.
+        if ($area === 'farmasi') {
+            return view('display.farmasi', [
+                'judul'       => $judul,
+                'runningText' => $runningText,
+                'jsonUrl'     => $jsonUrl,
+            ]);
+        }
 
         return view('display.layar', [
             'area'        => $area,
-            'judul'       => $rooms ? 'RUANG '.implode(' - ', $rooms) : $meta['judul'],
+            'judul'       => $judul,
+            'zoneDesc'    => $zoneDesc,
             'banners'     => Banner::active()->forClinic($clinic)->orderBy('sort')->orderBy('id')->get(),
             'video'       => Video::active()->forClinic($clinic)->orderBy('sort')->first(),
-            'runningText' => self::RUNNING_TEXT,
+            'runningText' => $runningText,
             'jsonUrl'     => $jsonUrl,
         ]);
     }
 
-    /** Nama zona (poli) — dari struktur RS. */
-    private const ZONE_NAMES = [
-        '11' => 'Dental, Women & Children clinic',
-        '12' => 'Beauty & Nutrition, Surgery clinic',
-        '15' => 'Neuroscience, Orthopedic, Oncology Clinic',
-        '16' => 'Medical & Sport Rehabilitation Center',
-        '17' => 'Cardiology & Internal Medicine Clinic, Pharmacy',
-        '18' => 'Medical Check Up',
-    ];
+    /** Semua kode ruang dalam satu zona (dari tabel `zones`), untuk ?floor=. */
+    private function zoneRooms(?string $floor): array
+    {
+        $zone = $floor ? Zone::allCached()->get($floor) : null;
 
-    /** Pasangan ruang per zona — DISALIN PERSIS dari antrian_old (modal.php). */
-    private const ZONE_PAIRS = [
-        '11' => [['1101'], ['1102', '1103'], ['1105', '1106'], ['1107'], ['1108'], ['1110', '1109']],
-        '12' => [['1219', '1220'], ['1217', '1218'], ['1223', '1225'], ['1221', '1222']],
-        '15' => [['1528', '1529'], ['1526', '1527'], ['1533'], ['1531', '1532']],
-        '17' => [['1736'], ['1737', '1738'], ['1739', '1751'], ['1752', '1753']],
-        '18' => [['1855'], ['1857', '1858'], ['1859', '1860']],
-    ];
+        // rooms BOLEH kosong ([]) - zona yang cuma dikonfigurasi namanya saja
+        // (lihat komentar migration `create_zones_table`). array_merge() tanpa
+        // argumen itu error di PHP 8, jadi harus dijaga eksplisit.
+        return ($zone && $zone->rooms) ? array_merge(...$zone->rooms) : [];
+    }
 
-    /** Tombol Main Display (admisi, kasir, farmasi) — label + ikon Material Symbols. */
+    /** Tombol Main Display (admisi, kasir, farmasi) - label + ikon (lihat display/menu.blade.php). */
     private const MAIN_AREAS = [
         ['label' => 'Admisi Rawat Jalan', 'params' => ['area' => 'klinik'],                    'icon' => 'calendar_today'],
         ['label' => 'Admisi IGD',         'params' => ['area' => 'klinik', 'unit' => 'igd'],   'icon' => 'local_hospital'],
@@ -77,6 +105,7 @@ class DisplayController extends Controller
         ['label' => 'Kasir Farmasi',      'params' => ['area' => 'kasir', 'sub' => 'farmasi'], 'icon' => 'credit_card'],
         ['label' => 'Kasir Administrasi', 'params' => ['area' => 'kasir'],                     'icon' => 'receipt_long'],
         ['label' => 'Farmasi',            'params' => ['area' => 'farmasi'],                    'icon' => 'medication'],
+        ['label' => 'Registrasi',         'params' => ['area' => 'registrasi'],                 'icon' => 'how_to_reg'],
     ];
 
     /**
@@ -93,21 +122,31 @@ class DisplayController extends Controller
                 $byZone[substr($r->room_code, 0, 2)][] = $r->room_code;
             }
         } catch (\Throwable $e) {
+            // Master (RoomTicketPrefix) gagal diakses - jangan sampai halaman menu
+            // ikut mati, tapi tetap catat supaya kegagalan ini kelihatan di log,
+            // bukan cuma diam-diam jatuh ke peta zona tetap (ZONE_PAIRS).
+            Log::warning('DisplayController::menu() gagal baca RoomTicketPrefix: '.$e->getMessage());
             $byZone = [];
         }
 
         // Susun data zona: pakai peta tetap bila ada; selain itu pasangkan 2-2.
+        $zones = Zone::allCached();
+
         $zoneData = [];
         foreach ($byZone as $zone => $rooms) {
+            $z = $zones->get($zone);
             $zoneData[$zone] = [
-                'name'  => self::ZONE_NAMES[$zone] ?? 'Zona '.$zone,
-                'pairs' => self::ZONE_PAIRS[$zone] ?? array_chunk($rooms, 2),
+                'name'  => $z->name ?? 'Zona '.$zone,
+                // rooms kosong ([]) = zona cuma dikonfigurasi namanya saja →
+                // pasangkan otomatis 2-2 dari master, SAMA seperti zona yg
+                // sama sekali belum ada di tabel `zones`.
+                'pairs' => ($z && $z->rooms) ? $z->rooms : array_chunk($rooms, 2),
             ];
         }
-        // Zona di peta tetap tapi belum muncul dari master → tetap tampilkan.
-        foreach (self::ZONE_PAIRS as $zone => $pairs) {
-            if (! isset($zoneData[$zone])) {
-                $zoneData[$zone] = ['name' => self::ZONE_NAMES[$zone] ?? 'Zona '.$zone, 'pairs' => $pairs];
+        // Zona yang sudah dikonfigurasi admin tapi belum muncul dari master → tetap tampilkan.
+        foreach ($zones as $zone => $z) {
+            if (! isset($zoneData[$zone]) && $z->rooms) {
+                $zoneData[$zone] = ['name' => $z->name, 'pairs' => $z->rooms];
             }
         }
         ksort($zoneData);
@@ -130,12 +169,10 @@ class DisplayController extends Controller
     }
 
     /**
-     * Query dasar Antrian hari ini untuk sebuah AREA layar. Farmasi TIDAK
-     * bisa difilter lewat kolom `tahap` — pasien ber-resep tetap di tahap
-     * KASIR sepanjang alur (lihat Antrian::selesaiFarmasi()), hanya kolom
-     * farmasi_panggil_at/farmasi_selesai_at yang berubah. Filter lewat
-     * status_resep di sini (racik + non_racik digabung, sama seperti
-     * maksud user: satu layar farmasi menampilkan keduanya).
+     * Query dasar Antrian hari ini untuk sebuah AREA layar. Farmasi difilter
+     * lewat status_resep (racik + non_racik digabung jadi satu layar), bukan
+     * lewat kolom `tahap` - lebih tahan terhadap perubahan alur di masa depan
+     * (mis. kolom `tahap` sempat tak konsisten dipakai untuk farmasi).
      */
     private function areaQuery(string $area, string $tahap)
     {
@@ -152,7 +189,57 @@ class DisplayController extends Controller
     {
         $meta  = self::AREAS[$area] ?? abort(404);
         $tahap = $meta['tahap'];
-        $rooms = $this->roomList($request->query('room'));
+        $rooms = $this->roomList($request->query('room')) ?: $this->zoneRooms($request->query('floor'));
+
+        // REGISTRASI: data sama sekali TIDAK ada di tabel `antrian` (beda
+        // koneksi/tabel - lihat App\Models\KioskRegistration), jadi tidak bisa
+        // lewat areaQuery()/interpolasi kolom "{$tahap}_..." di bawah seperti
+        // klinik/kasir/farmasi. Hitung terpisah, tapi BENTUK JSON-nya SAMA
+        // (current/next/queue/waiting_total) supaya display.layar's poll() JS
+        // yang sudah ada jalan tanpa ubahan sama sekali.
+        if ($area === 'registrasi') {
+            $regBase = fn () => KioskRegistration::whereDate('tanggal', today());
+
+            $calls = $regBase()->whereNotNull('panggil_at')->whereNull('selesai_at')
+                ->orderByDesc('panggil_at')->limit(6)
+                ->get(['rg_no', 'counter', 'panggil_at', 'panggil_count']);
+            $first = $calls->first();
+
+            $waiting = $regBase()->where('status', 'menunggu')
+                ->orderBy('created_at')->limit(9)->get(['rg_no']);
+            $next = $waiting->first();
+
+            $waitingTotal = $regBase()->where('status', 'menunggu')->count();
+
+            // Buang kata depan yang sudah menyatu di nilai counter (mis. "Counter 2")
+            // supaya layar tak menampilkan dobel "COUNTER Counter 2" - sama seperti
+            // pembersihan $tujuan() di bawah untuk klinik/kasir/farmasi.
+            $cleanCounter = function (?string $v) {
+                $v = trim((string) $v);
+                if ($v === '') {
+                    return '-';
+                }
+                $v = preg_replace('/\s*\([^)]*\)\s*/', ' ', $v);
+                $v = preg_replace('/^(counter|loket|ruang|room)\s*/i', '', $v);
+
+                return trim($v) !== '' ? trim($v) : '-';
+            };
+
+            return response()->json([
+                'current' => $first ? [
+                    'no'      => $first->rg_no,
+                    'tujuan'  => $cleanCounter($first->counter),
+                    'counter' => $first->counter,
+                    'seq'     => $first->panggil_count,
+                    'at'      => optional($first->panggil_at)->timestamp,
+                ] : null,
+                'next' => $next ? ['no' => $next->rg_no] : null,
+                'queue' => $waiting->map(fn ($r) => [
+                    'no' => $r->rg_no, 'tujuan' => '-', 'booking' => false,
+                ])->values(),
+                'waiting_total' => $waitingTotal,
+            ]);
+        }
 
         // Nomor yang sedang dipanggil (belum selesai) di tahap ini hari ini,
         // urut terbaru dulu (paling atas = panggilan aktif). Bila ?room= diberikan,
@@ -173,7 +260,7 @@ class DisplayController extends Controller
         $waiting = $this->areaQuery($area, $tahap)
             ->whereNull("{$tahap}_panggil_at")
             ->when($rooms, fn ($q) => $q->whereIn('room_code', $rooms))
-            // Urut berdasarkan NOMOR SLOT, bukan waktu tunggu — supaya pasien
+            // Urut berdasarkan NOMOR SLOT, bukan waktu tunggu - supaya pasien
             // booking tampil di posisi seharusnya (berselang dengan yang sudah
             // check-in), bukan terlempar ke belakang.
             ->orderBy('queue_no')
@@ -185,7 +272,7 @@ class DisplayController extends Controller
 
         $next = $waiting->first();
 
-        // TOTAL yang menunggu (tanpa limit) — layar hanya menampilkan beberapa
+        // TOTAL yang menunggu (tanpa limit) - layar hanya menampilkan beberapa
         // kartu pertama, angka ini memberi tahu sisanya tanpa puluhan kotak.
         // Hanya pasien NYATA yang dihitung: yang masih booking belum tentu
         // datang, jadi tidak boleh menggelembungkan angka antrian.
@@ -207,16 +294,38 @@ class DisplayController extends Controller
         $tujuan = function ($r) use ($tahap) {
             $v = trim((string) ($tahap === 'klinik' ? $r->room_code : $r->counter));
             if ($v === '') {
-                return '—';
+                return '-';
             }
             $v = preg_replace('/\s*\([^)]*\)\s*/', ' ', $v);              // buang "(Zona 18)"
             $v = preg_replace('/^(counter|loket|ruang|room)\s*/i', '', $v); // buang kata depan
 
-            return trim($v) !== '' ? trim($v) : '—';
+            return trim($v) !== '' ? trim($v) : '-';
         };
 
+        // FARMASI: layar sendiri butuh queue terpisah racik/non-racik, dan
+        // sampai 4 kartu "sedang diproses" (semua panggilan aktif, bukan cuma
+        // yang terbaru). $mkQueue pakai scope yang sama dgn konsol Farmasi.
+        $farmasiExtra = [];
+        if ($area === 'farmasi') {
+            $mkQueue = fn (string $jenis) => Antrian::today()->farmasiQueue($jenis)
+                ->whereNull('farmasi_panggil_at')
+                ->orderBy('farmasi_tunggu_at')
+                ->limit(12)
+                ->get(['no_antrian'])
+                ->map(fn ($r) => ['no' => $r->no_antrian])->values();
+
+            $farmasiExtra = [
+                'queue_racik'     => $mkQueue(Antrian::FARMASI_RACIK),
+                'queue_non_racik' => $mkQueue(Antrian::FARMASI_NON_RACIK),
+                'processing'      => $calls->take(4)->map(fn ($r) => [
+                    'no'     => $r->no_antrian,
+                    'tujuan' => $tujuan($r),
+                ])->values(),
+            ];
+        }
+
         // CATATAN PRIVASI: endpoint ini PUBLIK (dipakai layar TV, tanpa login),
-        // jadi `pasien_nama` sengaja TIDAK ikut dikirim — layar hanya
+        // jadi `pasien_nama` sengaja TIDAK ikut dikirim - layar hanya
         // menampilkan nomor antrian & tujuan. Nama pasien hanya boleh muncul
         // di halaman terproteksi (mis. konsol dokter di queue/klinik).
         return response()->json([
@@ -240,6 +349,7 @@ class DisplayController extends Controller
                 'booking' => (bool) $r->is_booking,
             ])->values(),
             'waiting_total' => $waitingTotal,
+            ...$farmasiExtra,
         ]);
     }
 
@@ -264,7 +374,7 @@ class DisplayController extends Controller
 
         $cards = [];
         foreach ($rooms as $rc) {
-            // Dokter yg MENEMPATI ruang ini hari ini (login) — mirip islogin lama.
+            // Dokter yg MENEMPATI ruang ini hari ini (login) - mirip islogin lama.
             $occ = \App\Models\AntrianAccess::where('room_code', $rc)
                 ->whereNotNull('room_occupied_at')
                 ->whereDate('room_occupied_at', today())
@@ -277,10 +387,9 @@ class DisplayController extends Controller
             $q = $pid ? $this->clientQueue($pid, $rc, $s2)
                       : ['sedang' => null, 'seq' => 0, 'sesi1' => [], 'sesi2' => []];
 
-            $photo = null;
-            if ($pid && ($ph = \App\Models\DoctorPhoto::find($pid))) {
-                $photo = $ph->url();
-            }
+            // Upload lewat app kalau ada, else fallback foto lama di img-dokter
+            // (dicocokkan by nama) - lihat DoctorPhoto::urlFor().
+            $photo = $pid ? \App\Models\DoctorPhoto::urlFor($pid, $occ->paramedic_name ?? null) : null;
 
             $cards[] = [
                 'room'   => $rc,
@@ -339,9 +448,9 @@ class DisplayController extends Controller
             ->orderByRaw('LENGTH(no_antrian), no_antrian')->limit(30)
             ->get(['no_antrian', 'klinik_tunggu_at', 'is_booking']);
 
-        // Baris `is_booking` (belum check-in) IKUT ditampilkan — supaya nomornya
+        // Baris `is_booking` (belum check-in) IKUT ditampilkan - supaya nomornya
         // sudah kelihatan dari awal & tak "meloncat" posisi begitu pasien check-in
-        // — tapi ditandai `pending` supaya layar bisa merender lebih redup.
+        // - tapi ditandai `pending` supaya layar bisa merender lebih redup.
         $s2start = $s2['start'] ?? null;
         $sesi1 = []; $sesi2 = [];
         foreach ($rows as $r) {
@@ -363,6 +472,6 @@ class DisplayController extends Controller
             ->where('service_unit_name', '<>', '')->value('service_unit_name');
         if ($p) return $p;
         $p = Antrian::where('room_code', $room)->where('poli_nama', '<>', '')->value('poli_nama');
-        return $p ?: '—';
+        return $p ?: '-';
     }
 }

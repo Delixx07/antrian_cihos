@@ -8,11 +8,11 @@ use Illuminate\Support\Env;
 
 // Jangan pakai putenv() untuk memuat .env. Aplikasi ini berbagi satu proses
 // Apache/PHP (XAMPP mod_php, satu proses) dengan app "appointment" di sibling
-// folder — putenv() menulis ke environment level PROSES, jadi tanpa ini
+// folder - putenv() menulis ke environment level PROSES, jadi tanpa ini
 // request app ini bisa ikut membaca DB_DATABASE dkk milik app appointment
 // (atau sebaliknya), menyebabkan query nyasar ke database yang salah secara
 // acak (contoh nyata: "Table appointment_pasien_cihos.antrian_access doesn't
-// exist" — padahal harusnya baca antrian_cihos).
+// exist" - padahal harusnya baca antrian_cihos).
 Env::disablePutenv();
 
 return Application::configure(basePath: dirname(__DIR__))

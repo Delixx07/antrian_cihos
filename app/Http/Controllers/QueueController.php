@@ -23,7 +23,7 @@ class QueueController extends Controller
         $isAdmin = in_array($role, ['administrator', 'spv'], true);
         $date    = $request->query('date') ?: now()->toDateString();
 
-        // Auto-sync ringan saat halaman dibuka — membaca tabel appointment di
+        // Auto-sync ringan saat halaman dibuka - membaca tabel appointment di
         // MySQL lokal (bukan HTTP), jadi murah & tidak mungkin timeout.
         $sync->pullThrottled($date);
 
@@ -51,7 +51,7 @@ class QueueController extends Controller
                         'room'           => $a->room_code,
                         'appointmentNo'  => $a->appointment_no,
                         'registrationNo' => $a->registration_no,
-                        'timeRegis'      => optional($a->klinik_tunggu_at)->format('H:i') ?: '—',
+                        'timeRegis'      => optional($a->klinik_tunggu_at)->format('H:i') ?: '-',
                         'status'         => $a->tahap,
                     ])->all()
                 : [];
@@ -88,16 +88,23 @@ class QueueController extends Controller
         $ownToday = fn () => Antrian::today()->where('paramedic_id', $paramedicId);
 
         // Menunggu: di tahap klinik, belum dipanggil. Urut ASCENDING nomor antrian.
-        $menunggu  = $ownToday()->where('tahap', self::TAHAP)->nyata()
+        // SENGAJA termasuk baris `is_booking` (belum check-in) - supaya urutan
+        // antrian terlihat UTUH sejak awal. Tanpa ini, pasien nomor 2 yang baru
+        // check-in belakangan tiba-tiba "menyelip" di depan pasien nomor 3 yang
+        // sudah menunggu lebih dulu, padahal slotnya memang sudah ada sejak pagi
+        // - pasien nomor 3 wajar merasa didahului. Baris booking ditampilkan
+        // SAMAR (lihat blade) & tak boleh dipanggil - lihat scopeNyata().
+        $menunggu  = $ownToday()->where('tahap', self::TAHAP)
             ->whereNull('klinik_panggil_at')
             ->orderByRaw('LENGTH(no_antrian), no_antrian')->get();
+        $menungguNyata = $menunggu->where('is_booking', false)->values();
 
         // Sudah dipanggil, konsultasi belum diselesaikan (aktif di ruang).
         $dipanggil = $ownToday()->where('tahap', self::TAHAP)
             ->whereNotNull('klinik_panggil_at')->whereNull('klinik_selesai_at')
             ->orderByDesc('klinik_panggil_at')->get();
 
-        // Riwayat: sudah diselesaikan dokter (klinik_selesai_at terisi) — bisa
+        // Riwayat: sudah diselesaikan dokter (klinik_selesai_at terisi) - bisa
         // dipanggil ulang bila pasien perlu balik. Terbaru di atas.
         $selesai = $ownToday()->whereNotNull('klinik_selesai_at')
             ->orderByDesc('klinik_selesai_at')->get();
@@ -111,8 +118,10 @@ class QueueController extends Controller
             'dipanggil'   => $dipanggil,
             'selesai'     => $selesai,
             'current'     => $current,
-            'sisa'        => $menunggu->count(),
-            'berikutnya'  => $menunggu->first(),
+            // "Sisa" & "berikutnya" hanya hitung pasien NYATA (sudah check-in) -
+            // baris booking cuma penanda slot, belum benar-benar menunggu.
+            'sisa'        => $menungguNyata->count(),
+            'berikutnya'  => $menungguNyata->first(),
         ];
     }
 
@@ -136,17 +145,41 @@ class QueueController extends Controller
             return back()->with('error', 'Gagal menarik data: '.($r['message'] ?? 'tidak diketahui'));
         }
 
-        $added = (int) ($r['added'] ?? 0);
+        $added   = (int) ($r['added'] ?? 0);
+        $removed = (int) ($r['removed'] ?? 0);
 
-        return back()->with('ok', $added > 0
-            ? "Berhasil menarik {$added} pasien baru dari appointment."
-            : 'Data sudah terbaru — tidak ada pasien baru.');
+        $msg = [];
+        if ($added > 0) {
+            $msg[] = "menarik {$added} pasien baru";
+        }
+        if ($removed > 0) {
+            $msg[] = "membuang {$removed} antrian yang appointment-nya sudah dibatalkan";
+        }
+
+        return back()->with('ok', $msg
+            ? 'Berhasil '.implode(', ', $msg).'.'
+            : 'Data sudah terbaru - tidak ada perubahan.');
     }
 
-    /** Panggil pasien berikutnya (dokter) — ambil nomor terkecil yg menunggu. */
+    /**
+     * Dokter ini masih punya pasien yang dipanggil TAPI belum diselesaikan?
+     * Dipakai supaya tak bisa memanggil pasien baru sebelum yang sekarang
+     * benar-benar selesai (Selesai) - kalau tidak, "Sedang Dipanggil" numpuk
+     * dan tidak jelas siapa yang benar sedang di ruang praktik.
+     */
+    private function hasActiveKlinik(int $paramedicId): bool
+    {
+        return Antrian::hasActiveCall('klinik', 'paramedic_id', $paramedicId, self::TAHAP);
+    }
+
+    /** Panggil pasien berikutnya (dokter) - ambil nomor terkecil yg menunggu. */
     public function panggil(Request $request)
     {
         $paramedicId = (int) session('paramedic_id', 0);
+
+        if ($this->hasActiveKlinik($paramedicId)) {
+            return back()->with('error', 'Selesaikan dulu pasien yang sedang dilayani sebelum memanggil yang baru.');
+        }
 
         $next = Antrian::today()->where('tahap', self::TAHAP)->nyata()
             ->where('paramedic_id', $paramedicId)
@@ -171,6 +204,12 @@ class QueueController extends Controller
         if ($antrian->paramedic_id !== $paramedicId || $antrian->tahap !== self::TAHAP) {
             return back()->with('error', 'Pasien bukan di antrian klinik Anda.');
         }
+        if ($antrian->is_booking) {
+            return back()->with('error', 'Pasien ini belum check-in - belum bisa dipanggil.');
+        }
+        if ($this->hasActiveKlinik($paramedicId)) {
+            return back()->with('error', 'Selesaikan dulu pasien yang sedang dilayani sebelum memanggil yang baru.');
+        }
 
         $antrian->panggil(self::TAHAP, $antrian->room_name ?: 'Ruang Praktik');
 
@@ -181,7 +220,7 @@ class QueueController extends Controller
 
     /**
      * Panggil ulang (recall). Berlaku untuk pasien yang sedang di ruang MAUPUN
-     * yang sudah selesai (riwayat) — bila pasien perlu kembali ke dokter.
+     * yang sudah selesai (riwayat) - bila pasien perlu kembali ke dokter.
      */
     public function ulang(Antrian $antrian)
     {
@@ -205,18 +244,18 @@ class QueueController extends Controller
     }
 
     /**
-     * Selesai → dokter memilih status resep, pasien transfer ke KASIR:
-     *   non_resep | racik | non_racik
+     * Selesai → dorong pasien langsung ke KASIR. Status resep (racik/non-racik/
+     * tanpa resep) kini dipilih KASIR, bukan di sini.
      */
-    public function selesai(Request $request, Antrian $antrian)
+    public function selesai(Antrian $antrian)
     {
-        $status = $request->input('status_resep');
-        if (! in_array($status, [Antrian::RESEP_NON, Antrian::RESEP_RACIK, Antrian::RESEP_NON_RACIK], true)) {
-            return back()->with('error', 'Pilih status resep dulu.');
+        $paramedicId = (int) session('paramedic_id', 0);
+        if ($antrian->paramedic_id !== $paramedicId) {
+            return back()->with('error', 'Pasien bukan pasien Anda.');
         }
 
-        $antrian->transferKeKasir($status);
+        $antrian->selesaikan(self::TAHAP, Antrian::TAHAP_KASIR);
 
-        return back()->with('ok', 'Antrian '.$antrian->no_antrian.' ('.$antrian->statusLabel().') diteruskan ke Administrasi.');
+        return back()->with('ok', 'Antrian '.$antrian->no_antrian.' diteruskan ke Kasir.');
     }
 }

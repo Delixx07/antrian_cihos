@@ -35,7 +35,7 @@ return [
         ],
     ],
 
-    // Aplikasi Appointment — sumber data registrasi/antrian (live vRegistration).
+    // Aplikasi Appointment - sumber data registrasi/antrian (live vRegistration).
     // Antrian memanggil GET {base_url}/api/queue/registrations dgn header X-Api-Key.
     'appointment' => [
         'base_url' => rtrim((string) env('APPOINTMENT_API_URL', 'http://localhost/appointment/public'), '/'),
